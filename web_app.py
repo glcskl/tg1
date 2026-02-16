@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
@@ -26,10 +27,19 @@ app = Flask(__name__)
 
 # Дни и недели такие же, как в aiogram-версии
 DAYS = [("пн", "Пн"), ("вт", "Вт"), ("ср", "Ср"), ("чт", "Чт"), ("пт", "Пт")]
-WEEKS = [("числитель", "Числитель"), ("знаменатель", "Знаменатель")]
+
+# Определяем текущую неделю (числитель/знаменатель)
+def get_current_week() -> str:
+    # Узнаем номер недели в году
+    week_number = datetime.now().isocalendar()[1]
+    # Четная неделя - знаменатель, нечетная - числитель
+    if week_number % 2 == 1:
+        return "числитель"
+    else:
+        return "знаменатель"
 
 
-# В памяти держим выбор пользователя: { user_id: {"week": "...", "day": "..."} }
+# В памяти держим выбор пользователя: { user_id: {"day": "..."} }
 user_state: dict[int, dict[str, str | None]] = {}
 
 
@@ -51,7 +61,9 @@ def format_day(schedule: dict, week: str, day: str) -> str:
         return header + "\nНет пар ✅"
 
     lines = [header]
-    for i, it in enumerate(items, 1):
+    # Для понедельника начинаем нумерацию с 2
+    start_number = 2 if day == "пн" else 1
+    for i, it in enumerate(items, start_number):
         time = (it.get("time") or "").strip()
         subject = (it.get("subject") or "").strip()
         kind = (it.get("kind") or "").strip()
@@ -74,32 +86,14 @@ def format_day(schedule: dict, week: str, day: str) -> str:
     return "\n\n".join(lines).strip()
 
 
-def week_keyboard() -> dict:
-    """Инлайн-клавиатура для выбора недели."""
-    row = [
-        {"text": title, "callback_data": f"week:{key}"}
-        for key, title in WEEKS
-    ]
-    return {"inline_keyboard": [row]}
-
-
-def day_keyboard(selected_week: str | None = None) -> dict:
-    """Инлайн-клавиатура для выбора дня и смены недели."""
+def day_keyboard() -> dict:
+    """Инлайн-клавиатура для выбора дня."""
     days_row = [
         {"text": title, "callback_data": f"day:{key}"}
         for key, title in DAYS
     ]
 
-    if selected_week:
-        label = f"Неделя: {selected_week}"
-    else:
-        label = "Выбрать неделю"
-
-    change_week_row = [
-        {"text": label, "callback_data": "change_week"}
-    ]
-
-    return {"inline_keyboard": [days_row, change_week_row]}
+    return {"inline_keyboard": [days_row]}
 
 
 def tg_request(method: str, params: dict) -> dict:
@@ -121,13 +115,15 @@ def handle_message(message: dict) -> None:
         return
 
     if text in ("/start", "start"):
-        user_state[user_id] = {"week": None, "day": None}
+        user_state[user_id] = {"day": None}
+        week = get_current_week()
         tg_request(
             "sendMessage",
             {
                 "chat_id": chat_id,
-                "text": "Привет! Выбери неделю 👇",
-                "reply_markup": week_keyboard(),
+                "text": f"Привет! Текущая неделя: *{week}*\nВыбери день 👇",
+                "parse_mode": "Markdown",
+                "reply_markup": day_keyboard(),
             },
         )
     else:
@@ -151,56 +147,11 @@ def handle_callback_query(callback_query: dict) -> None:
     if not (chat_id and message_id and user_id and callback_id):
         return
 
-    # Обработка нажатия "поменять неделю"
-    if data == "change_week":
-        tg_request(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": "Выбери неделю 👇",
-                "reply_markup": week_keyboard(),
-            },
-        )
-        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
-        return
-
-    # Обработка выбора недели
-    if data.startswith("week:"):
-        week = data.split(":", 1)[1]
-        st = user_state.setdefault(user_id, {"week": None, "day": None})
-        st["week"] = week
-
-        tg_request(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": f"Ок! Неделя: *{week}*\nТеперь выбери день 👇",
-                "parse_mode": "Markdown",
-                "reply_markup": day_keyboard(selected_week=week),
-            },
-        )
-        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
-        return
-
     # Обработка выбора дня
     if data.startswith("day:"):
         day = data.split(":", 1)[1]
-        st = user_state.setdefault(user_id, {"week": None, "day": None})
-        week = st.get("week")
-
-        if not week:
-            # Если неделя не выбрана — покажем алерт
-            tg_request(
-                "answerCallbackQuery",
-                {
-                    "callback_query_id": callback_id,
-                    "text": "Сначала выбери неделю 🙂",
-                    "show_alert": True,
-                },
-            )
-            return
+        st = user_state.setdefault(user_id, {"day": None})
+        week = get_current_week()
 
         schedule = load_schedule()
         text = format_day(schedule, week, day)
@@ -213,7 +164,7 @@ def handle_callback_query(callback_query: dict) -> None:
                 "message_id": message_id,
                 "text": text,
                 "parse_mode": "Markdown",
-                "reply_markup": day_keyboard(selected_week=week),
+                "reply_markup": day_keyboard(),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
@@ -247,4 +198,3 @@ def telegram_webhook():
 if __name__ == "__main__":
     # Локальный запуск для отладки (например, через ngrok)
     app.run(host="0.0.0.0", port=8000, debug=True)
-
