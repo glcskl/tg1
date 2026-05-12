@@ -26,21 +26,32 @@ app = Flask(__name__)
 
 
 # Дни и недели такие же, как в aiogram-версии
-DAYS = [("пн", "Пн"), ("вт", "Вт"), ("ср", "Ср"), ("чт", "Чт"), ("пт", "Пт")]
+DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
+
+# Данные экзаменов
+EXAMS = [
+    {"date": "11.06.26", "subject": "Основы машинного обучения", "teacher": "Никонова Т.В.", "time": "8:30", "room": "4-506"},
+    {"date": "15.06.26", "subject": "Системы управления веб-контентом", "teacher": "Бизюк А.Н.", "time": "8:30", "room": "122"},
+    {"date": "19.06.26", "subject": "Электронные финансы", "teacher": "Советникова О.П.", "time": "8:30", "room": "4-310"},
+    {"date": "23.06.26", "subject": "Электронный бизнес", "teacher": "Краенкова К.И.", "time": "8:30", "room": "4-318"},
+    {"date": "27.06.26", "subject": "Анализ хозяйственной деятельности", "teacher": "Солодкий Д.Т.", "time": "8:30", "room": "4-702"},
+]
+
+# Данные зачетов
+CREDITS = [
+    {"date": "01.06.26", "subject": "Институциональная система информационного общества", "teacher": "Грузневич Е.С.", "time": "11:40", "room": "4-311"},
+    {"date": "02.06.26", "subject": "Физическая культура", "teacher": "Козлов А.Н.", "time": "9:50", "room": "Главный спортзал"},
+    {"date": "04.06.26", "subject": "Теория отраслевых рынков", "teacher": "Демидова М.А.", "time": "11:40", "room": "4-502"},
+    {"date": "04.06.26", "subject": "Логистика и управление цепями поставок", "teacher": "Жучкевич О.Н.", "time": "15:40", "room": "4-502"},
+]
 
 # Определяем текущую неделю (числитель/знаменатель)
 def get_current_week() -> str:
-    # Узнаем номер недели в году
     week_number = datetime.now().isocalendar()[1]
-    # Четная неделя - числитель, нечетная - знаменатель
     if week_number % 2 == 0:
         return "числитель"
     else:
         return "знаменатель"
-
-
-# В памяти держим выбор пользователя: { user_id: {"day": "..."} }
-user_state: dict[int, dict[str, str | None]] = {}
 
 
 def schedule_path() -> str:
@@ -52,18 +63,46 @@ def load_schedule() -> dict:
         return json.load(f)
 
 
+# Главное меню с 3 кнопками
+def main_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📅 Расписание", "callback_data": "schedule"},
+                {"text": "📝 Экзамены", "callback_data": "exams"},
+                {"text": "✅ Зачеты", "callback_data": "credits"},
+            ]
+        ]
+    }
+
+
+# Клавиатура дней недели
+def day_keyboard() -> dict:
+    days_row = [
+        {"text": title, "callback_data": f"day:{key}"}
+        for key, title in DAYS
+    ]
+    back_row = [{"text": "🔙 Назад", "callback_data": "back"}]
+    return {"inline_keyboard": [days_row, back_row]}
+
+
+# Клавиатура "Назад"
+def back_keyboard() -> dict:
+    return {
+        "inline_keyboard": [[{"text": "🔙 Назад", "callback_data": "back"}]]
+    }
+
+
 def format_day(schedule: dict, week: str, day: str) -> str:
     items = schedule.get(week, {}).get(day, [])
     day_name = dict(DAYS).get(day, day)
 
-    header = f"📅 *{day_name.upper()}* — *{week}*\n"
+    header = f"📅 *{day_name.upper()}*\n📅 Неделя: *{week}*\n"
     if not items:
-        return header + "\nНет пар ✅"
+        return header + "\n✅ Нет пар"
 
     lines = [header]
-    # Для понедельника начинаем нумерацию с 2
-    start_number = 2 if day == "пн" else 1
-    for i, it in enumerate(items, start_number):
+    for i, it in enumerate(items, 1):
         time = (it.get("time") or "").strip()
         subject = (it.get("subject") or "").strip()
         kind = (it.get("kind") or "").strip()
@@ -72,9 +111,10 @@ def format_day(schedule: dict, week: str, day: str) -> str:
 
         title = subject
         if kind:
-            title = f"{subject} ({kind})"
+            kind_emoji = {"лк": "📖", "лб": "🔬", "пр": "✏️"}.get(kind, "📚")
+            title = f"{subject} ({kind_emoji} {kind})"
 
-        block = [f"{i}) ⏰ *{time}*", f"   📚 {title}"]
+        block = [f"{i}️⃣ ⏰ *{time}*", f"   📚 {title}"]
 
         if teacher:
             block.append(f"   👤 {teacher}")
@@ -86,14 +126,30 @@ def format_day(schedule: dict, week: str, day: str) -> str:
     return "\n\n".join(lines).strip()
 
 
-def day_keyboard() -> dict:
-    """Инлайн-клавиатура для выбора дня."""
-    days_row = [
-        {"text": title, "callback_data": f"day:{key}"}
-        for key, title in DAYS
-    ]
+def format_exams() -> str:
+    lines = ["📝 *ЭКЗАМЕНЫ*\n"]
+    for exam in EXAMS:
+        lines.append(f"📅 *{exam['date']}*")
+        lines.append(f"📚 {exam['subject']}")
+        lines.append(f"👤 {exam['teacher']}")
+        lines.append(f"⏰ {exam['time']}")
+        lines.append(f"🏫 Кабинет: {exam['room']}")
+        lines.append("")
+    
+    return "\n".join(lines).strip()
 
-    return {"inline_keyboard": [days_row]}
+
+def format_credits() -> str:
+    lines = ["✅ *ЗАЧЕТЫ*\n"]
+    for credit in CREDITS:
+        lines.append(f"📅 *{credit['date']}*")
+        lines.append(f"📚 {credit['subject']}")
+        lines.append(f"👤 {credit['teacher']}")
+        lines.append(f"⏰ {credit['time']}")
+        lines.append(f"🏫 {credit['room']}")
+        lines.append("")
+    
+    return "\n".join(lines).strip()
 
 
 def tg_request(method: str, params: dict) -> dict:
@@ -108,22 +164,17 @@ def tg_request(method: str, params: dict) -> dict:
 
 def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
-    user_id = message.get("from", {}).get("id")
     text = (message.get("text") or "").strip()
 
-    if not user_id:
-        return
-
     if text in ("/start", "start"):
-        user_state[user_id] = {"day": None}
         week = get_current_week()
         tg_request(
             "sendMessage",
             {
                 "chat_id": chat_id,
-                "text": f"Привет! Текущая неделя: *{week}*\nВыбери день 👇",
+                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
                 "parse_mode": "Markdown",
-                "reply_markup": day_keyboard(),
+                "reply_markup": main_keyboard(),
             },
         )
     else:
@@ -131,7 +182,7 @@ def handle_message(message: dict) -> None:
             "sendMessage",
             {
                 "chat_id": chat_id,
-                "text": "Напиши /start чтобы открыть меню расписания 🙂",
+                "text": "Напиши /start чтобы открыть меню 🙂",
             },
         )
 
@@ -141,22 +192,83 @@ def handle_callback_query(callback_query: dict) -> None:
     message = callback_query.get("message") or {}
     chat_id = message.get("chat", {}).get("id")
     message_id = message.get("message_id")
-    user_id = callback_query.get("from", {}).get("id")
     callback_id = callback_query.get("id")
 
-    if not (chat_id and message_id and user_id and callback_id):
+    if not (chat_id and message_id and callback_id):
         return
 
-    # Обработка выбора дня
+    # Кнопка "Назад"
+    if data == "back":
+        week = get_current_week()
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
+                "parse_mode": "Markdown",
+                "reply_markup": main_keyboard(),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Кнопка "Расписание"
+    if data == "schedule":
+        week = get_current_week()
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"📅 *Расписание занятий*\n📅 Неделя: *{week}*\n\nВыбери день 👇",
+                "parse_mode": "Markdown",
+                "reply_markup": day_keyboard(),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Кнопка "Экзамены"
+    if data == "exams":
+        text = format_exams()
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "parse_mode": "Markdown",
+                "reply_markup": back_keyboard(),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Кнопка "Зачеты"
+    if data == "credits":
+        text = format_credits()
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "parse_mode": "Markdown",
+                "reply_markup": back_keyboard(),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Выбор дня
     if data.startswith("day:"):
         day = data.split(":", 1)[1]
-        st = user_state.setdefault(user_id, {"day": None})
         week = get_current_week()
 
         schedule = load_schedule()
         text = format_day(schedule, week, day)
 
-        st["day"] = day
         tg_request(
             "editMessageText",
             {
