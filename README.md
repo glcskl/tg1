@@ -1,130 +1,152 @@
-# Schedule Bot
+# 📅 Schedule Bot
 
-Telegram бот для просмотра расписания занятий. Поддерживает выбор недели (числитель/знаменатель) и дня недели.
+Telegram бот для просмотра расписания занятий, экзаменов и зачетов. Поддерживает автоматическое определение недели (числитель/знаменатель) и быстрый доступ к расписанию.
 
-## Технологии
+## ✨ Возможности
 
-- Python 3.8+
-- aiogram 3.7.0
-- python-dotenv 1.0.0
+- 📅 Просмотр расписания по дням недели
+- 📝 Расписание экзаменов
+- ✅ Расписание зачетов
+- 🔄 Автоматическое определение текущей недели (числитель/знаменатель)
+- ⚡ **24/7 работа на бесплатном тарифе Render** (с keep-alive механизмом)
 
-## Установка и запуск локально
+## 🚀 Быстрый старт
 
-1. Склонируйте репозиторий
-2. Перейдите в папку с ботом:
-   ```bash
-   cd schedule_bot
-   ```
-3. Установите зависимости:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Создайте файл `.env` из `.env.example` и добавьте токен вашего бота
-5. Запустите бота:
-   ```bash
-   python bot.py
-   ```
+### Локальный запуск
 
-## Развертывание на хостинге
+```bash
+# Клонирование
+git clone https://github.com/glcskl/tg.git
+cd tg
 
-### Option 1: Heroku (бесплатный тариф)
+# Установка зависимостей
+pip install -r requirements.txt
 
-1. Создайте аккаунт на [Heroku](https://heroku.com/)
-2. Установите [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli)
-3. В папке с ботом выполните:
-   ```bash
-   heroku login
-   heroku create your-app-name
-   heroku git:remote -a your-app-name
-   ```
-4. Настройте переменные окружения:
-   ```bash
-   heroku config:set BOT_TOKEN=your_bot_token
-   ```
-5. Создайте файл `Procfile` (если не существует):
-   ```
-   worker: python bot.py
-   ```
-6. Задеплоите код:
-   ```bash
-   git add .
-   git commit -m "Initial commit"
-   git push heroku main
-   ```
-7. Запустите воркер:
-   ```bash
-   heroku ps:scale worker=1
-   ```
+# Создание .env файла
+echo "BOT_TOKEN=your_bot_token_here" > .env
 
-### Option 2: PythonAnywhere (бесплатный тариф)
+# Запуск (polling режим)
+python bot.py
+```
 
-1. Создайте аккаунт на [PythonAnywhere](https://www.pythonanywhere.com/)
-2. Загрузите файлы бота в личный кабинет
-3. Установите зависимости:
-   ```bash
-   pip install -r requirements.txt --user
-   ```
-4. Создайте таску для запуска бота:
-   - Перейдите в раздел "Tasks"
-   - Создайте новую задачу
-   - Укажите команду: `python3 /home/your_username/schedule_bot/bot.py`
-   - Настройте интервал запуска (рекомендуется раз в 24 часа)
+### Деплой на Render.com
 
-### Option 3: Docker
+См. подробную инструкцию в [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md)
 
-1. Установите Docker и Docker Compose
-2. Создайте файл `docker-compose.yml`:
-   ```yaml
-   version: '3'
-   services:
-     bot:
-       build: .
-       container_name: schedule_bot
-       environment:
-         - BOT_TOKEN=your_bot_token
-       volumes:
-         - .:/app
-       restart: unless-stopped
-   ```
-3. Создайте Dockerfile:
-   ```dockerfile
-   FROM python:3.10-slim
+## 🔥 Keep-Alive - Бот всегда онлайн!
 
-   WORKDIR /app
+**Проблема:** На бесплатном тарифе Render сервис "засыпает" через 15 минут неактивности, и первый запрос занимает 30-60 секунд.
 
-   COPY requirements.txt .
-   RUN pip install --no-cache-dir -r requirements.txt
+**Решение:** Мы реализовали 3 уровня защиты от засыпания:
 
-   COPY . .
+### Уровень 1: Встроенный Self-Ping ✅
 
-   CMD ["python", "bot.py"]
-   ```
-4. Запустите контейнер:
-   ```bash
-   docker-compose up -d
-   ```
+Обновленный `web_app.py` автоматически пингует себя каждые 10 минут - **ничего настраивать не нужно!**
 
-## Структура проекта
+### Уровень 2: UptimeRobot (Рекомендуется) ⭐
 
-- `bot.py` - Основной скрипт бота
-- `schedule.json` - Данные расписания
-- `requirements.txt` - Зависимости
-- `.env` - Переменные окружения
-- `.env.example` - Пример файла с переменными окружения
+Бесплатный внешний мониторинг каждые 5 минут:
+1. Зарегистрируйтесь на https://uptimerobot.com
+2. Добавьте монитор для URL: `https://your-bot.onrender.com/health`
+3. Готово! Бот будет работать 24/7
 
-## Команды бота
+### Уровень 3: Локальный скрипт
 
-- `/start` - Начать работу с ботом
-- Любой другой текст - Выводит подсказку о начале работы
+```bash
+python keep_alive.py --url https://your-bot.onrender.com
+```
 
-## Использование
+📖 **Подробная инструкция:** [KEEP_ALIVE_GUIDE.md](KEEP_ALIVE_GUIDE.md)
 
-1. Отправьте `/start` боту
-2. Выберите тип недели (числитель или знаменатель)
-3. Выберите день недели
-4. Посмотрите расписание
+## 📁 Структура проекта
 
-## Редактирование расписания
+```
+tg/
+├── bot.py              # Версия с polling (aiogram) - для локального запуска
+├── web_app.py          # Версия с webhook (Flask) - для Render + self-ping
+├── keep_alive.py       # Скрипт для поддержания бота активным
+├── schedule.json       # Данные расписания
+├── requirements.txt    # Зависимости Python
+├── Procfile            # Команда запуска для Render
+├── render.yaml         # Конфигурация Render
+├── RENDER_DEPLOY_GUIDE.md  # Инструкция по деплою
+├── KEEP_ALIVE_GUIDE.md     # Инструкция по keep-alive
+└── README.md           # Этот файл
+```
 
-Чтобы изменить расписание, отредактируйте файл `schedule.json` в соответствии с существующим форматом.
+## 🛠 Технологии
 
+- Python 3.11
+- aiogram 3.x (polling режим)
+- Flask + gunicorn (webhook режим)
+- requests (Telegram API)
+
+## 📋 Команды бота
+
+| Команда | Описание |
+|---------|----------|
+| `/start` | Главное меню с кнопками |
+
+### Кнопки меню
+
+- **📅 Расписание** - выбор дня недели для просмотра расписания
+- **📝 Экзамены** - расписание экзаменов
+- **✅ Зачеты** - расписание зачетов
+
+## 🔧 API Endpoints (web_app.py)
+
+| Endpoint | Описание |
+|----------|----------|
+| `GET /` | Проверка работы бота |
+| `GET /health` | Health check (для мониторинга) |
+| `POST /webhook/{BOT_TOKEN}` | Webhook для Telegram |
+
+## 📝 Редактирование расписания
+
+Файл `schedule.json` содержит расписание для двух недель:
+
+```json
+{
+  "числитель": {
+    "пн": [
+      {
+        "time": "09:50-11:25",
+        "kind": "лб",
+        "subject": "Системы управления web-контентом",
+        "teacher": "Быковский Д.И.",
+        "room": "212"
+      }
+    ]
+  },
+  "знаменатель": { ... }
+}
+```
+
+Типы занятий (`kind`):
+- `лк` - лекция 📖
+- `лб` - лабораторная 🔬
+- `пр` - практика ✏️
+
+## 🧪 Тестирование
+
+```bash
+# Проверка health endpoint
+curl https://your-bot.onrender.com/health
+
+# Ожидаемый ответ
+{
+  "status": "ok",
+  "service": "tg-schedule-bot",
+  "timestamp": "2024-01-15T10:30:00",
+  "self_ping_enabled": true
+}
+```
+
+## 📚 Документация
+
+- [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md) - Инструкция по деплою на Render
+- [KEEP_ALIVE_GUIDE.md](KEEP_ALIVE_GUIDE.md) - Как держать бота всегда активным
+
+## 📄 Лицензия
+
+MIT

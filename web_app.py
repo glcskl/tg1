@@ -1,5 +1,7 @@
 import os
 import json
+import threading
+import time
 from datetime import datetime
 
 import requests
@@ -20,12 +22,61 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("Нет BOT_TOKEN. Создай .env и добавь BOT_TOKEN=...")
 
+# URL для self-ping (устанавливается автоматически на Render)
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 app = Flask(__name__)
 
+# ============================================
+# SELF-PING MECHANISM (предотвращает засыпание)
+# ============================================
 
-# Дни и недели такие же, как в aiogram-версии
+def self_ping_worker():
+    """
+    Фоновый поток для периодического self-ping.
+    Render усыпляет сервис через 15 минут неактивности.
+    Пинг каждые 10 минут держит сервис активным.
+    """
+    # Ждем 30 секунд при старте, чтобы сервер успел запуститься
+    time.sleep(30)
+    
+    while True:
+        try:
+            if RENDER_EXTERNAL_URL:
+                # Пингуем сами себя
+                response = requests.get(
+                    f"{RENDER_EXTERNAL_URL}/health",
+                    timeout=30,
+                    headers={"User-Agent": "SelfPing/1.0"}
+                )
+                if response.status_code == 200:
+                    print(f"[Keep-Alive] ✅ Self-ping успешен")
+                else:
+                    print(f"[Keep-Alive] ⚠️ Self-ping статус: {response.status_code}")
+            else:
+                # Если нет RENDER_EXTERNAL_URL, просто логируем
+                pass
+        except Exception as e:
+            print(f"[Keep-Alive] ❌ Ошибка self-ping: {e}")
+        
+        # Пинг каждые 10 минут (600 секунд)
+        # Render усыпляет через 15 минут, так что 10 минут - безопасный интервал
+        time.sleep(600)
+
+
+# Запускаем self-ping поток только если мы на Render
+if RENDER_EXTERNAL_URL:
+    ping_thread = threading.Thread(target=self_ping_worker, daemon=True)
+    ping_thread.start()
+    print(f"[Keep-Alive] 🚀 Запущен self-ping для {RENDER_EXTERNAL_URL}")
+
+
+# ============================================
+# ДАННЫЕ БОТА
+# ============================================
+
 DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
 
 # Данные экзаменов
@@ -45,7 +96,7 @@ CREDITS = [
     {"date": "05.06.26", "subject": "Логистика и управление цепями поставок", "teacher": "Жучкевич О.Н.", "time": "15:40", "room": "4-502"},
 ]
 
-# Определяем текущую неделю (числитель/знаменатель)
+
 def get_current_week() -> str:
     week_number = datetime.now().isocalendar()[1]
     if week_number % 2 == 0:
@@ -63,7 +114,10 @@ def load_schedule() -> dict:
         return json.load(f)
 
 
-# Главное меню с 3 кнопками
+# ============================================
+# КЛАВИАТУРЫ
+# ============================================
+
 def main_keyboard() -> dict:
     return {
         "inline_keyboard": [
@@ -76,7 +130,6 @@ def main_keyboard() -> dict:
     }
 
 
-# Клавиатура дней недели
 def day_keyboard() -> dict:
     days_row = [
         {"text": title, "callback_data": f"day:{key}"}
@@ -86,12 +139,15 @@ def day_keyboard() -> dict:
     return {"inline_keyboard": [days_row, back_row]}
 
 
-# Клавиатура "Назад"
 def back_keyboard() -> dict:
     return {
         "inline_keyboard": [[{"text": "🔙 Назад", "callback_data": "back"}]]
     }
 
+
+# ============================================
+# ФОРМАТИРОВАНИЕ
+# ============================================
 
 def format_day(schedule: dict, week: str, day: str) -> str:
     items = schedule.get(week, {}).get(day, [])
@@ -151,6 +207,10 @@ def format_credits() -> str:
     
     return "\n".join(lines).strip()
 
+
+# ============================================
+# TELEGRAM API
+# ============================================
 
 def tg_request(method: str, params: dict) -> dict:
     """Вспомогательная функция для вызова Telegram Bot API."""
@@ -294,9 +354,24 @@ def handle_update(update: dict) -> None:
         handle_callback_query(update["callback_query"])
 
 
+# ============================================
+# ROUTES
+# ============================================
+
 @app.get("/")
 def index():
     return "Bot is running."
+
+
+@app.get("/health")
+def health():
+    """Health check endpoint для мониторинга и self-ping."""
+    return {
+        "status": "ok",
+        "service": "tg-schedule-bot",
+        "timestamp": datetime.now().isoformat(),
+        "self_ping_enabled": bool(RENDER_EXTERNAL_URL)
+    }
 
 
 @app.post(f"/webhook/{BOT_TOKEN}")
