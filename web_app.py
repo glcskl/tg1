@@ -33,12 +33,38 @@ app = Flask(__name__)
 # SELF-PING MECHANISM (предотвращает засыпание)
 # ============================================
 
+def register_webhook():
+    """Автоматически регистрирует webhook при старте на Render."""
+    if not RENDER_EXTERNAL_URL:
+        return
+    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{BOT_TOKEN}"
+    try:
+        result = tg_request(
+            "setWebhook",
+            {
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query"],
+                "drop_pending_updates": True,
+            },
+        )
+        if result.get("ok"):
+            print(f"[Webhook] ✅ Зарегистрирован: {webhook_url}")
+        else:
+            print(f"[Webhook] ❌ Ошибка: {result.get('description')}")
+    except Exception as e:
+        print(f"[Webhook] ❌ Ошибка: {e}")
+
+
 def self_ping_worker():
     """
     Фоновый поток для периодического self-ping.
     Render усыпляет сервис через 15 минут неактивности.
     Пинг каждые 10 минут держит сервис активным.
     """
+    # Ждем 10 секунд, чтобы сервер успел запуститься, и регистрируем webhook
+    time.sleep(10)
+    register_webhook()
+
     # Ждем 30 секунд при старте, чтобы сервер успел запуститься
     time.sleep(30)
     
@@ -123,8 +149,6 @@ def main_keyboard() -> dict:
         "inline_keyboard": [
             [
                 {"text": "📅 Расписание", "callback_data": "schedule"},
-                {"text": "📝 Экзамены", "callback_data": "exams"},
-                {"text": "✅ Зачеты", "callback_data": "credits"},
             ]
         ]
     }
