@@ -105,6 +105,39 @@ if RENDER_EXTERNAL_URL:
 
 DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
 
+# Канал обязательной подписки
+REQUIRED_CHANNEL = "@startupspacevstu"
+CHANNEL_URL = "https://t.me/startupspacevstu"
+
+SUB_TEXT = (
+    "🔒 *Бот работает только для подписчиков канала*\n\n"
+    "1️⃣ Подпишись на канал 👇\n"
+    "2️⃣ Вернись сюда и нажми «🔄 Я подписался»"
+)
+
+
+def is_subscribed(user_id: int) -> bool:
+    """Проверяет подписку пользователя на обязательный канал."""
+    try:
+        result = tg_request(
+            "getChatMember",
+            {"chat_id": REQUIRED_CHANNEL, "user_id": user_id},
+        )
+        status = (result.get("result") or {}).get("status")
+        return result.get("ok") and status in ("creator", "administrator", "member", "restricted")
+    except Exception as e:
+        print(f"[SubCheck] ❌ Ошибка проверки подписки у {user_id}: {e}")
+        return False
+
+
+def subscription_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [{"text": "📢 Подписаться на канал", "url": CHANNEL_URL}],
+            [{"text": "🔄 Я подписался", "callback_data": "check_sub"}],
+        ]
+    }
+
 # Данные экзаменов
 EXAMS = [
     {"date": "11.06.26", "subject": "Основы машинного обучения", "teacher": "Никонова Т.В.", "time": "8:30", "room": "4-506"},
@@ -248,9 +281,22 @@ def tg_request(method: str, params: dict) -> dict:
 
 def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
+    user_id = (message.get("from") or {}).get("id")
     text = (message.get("text") or "").strip()
 
     if text in ("/start", "start"):
+        if user_id and not is_subscribed(user_id):
+            tg_request(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": SUB_TEXT,
+                    "parse_mode": "Markdown",
+                    "reply_markup": subscription_keyboard(),
+                },
+            )
+            return
+
         week = get_current_week()
         tg_request(
             "sendMessage",
@@ -281,8 +327,34 @@ def handle_callback_query(callback_query: dict) -> None:
     if not (chat_id and message_id and callback_id):
         return
 
-    # Кнопка "Назад"
-    if data == "back":
+    # Проверка подписки перед любым действием
+    user_id = (callback_query.get("from") or {}).get("id")
+    if user_id and not is_subscribed(user_id):
+        if data == "check_sub":
+            tg_request(
+                "answerCallbackQuery",
+                {
+                    "callback_query_id": callback_id,
+                    "text": "❌ Ты ещё не подписан на канал. Подпишись и нажми «Я подписался» ещё раз.",
+                    "show_alert": True,
+                },
+            )
+        else:
+            tg_request(
+                "editMessageText",
+                {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": SUB_TEXT,
+                    "parse_mode": "Markdown",
+                    "reply_markup": subscription_keyboard(),
+                },
+            )
+            tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Кнопка "Назад" / "Я подписался" (после успешной проверки)
+    if data in ("back", "check_sub"):
         week = get_current_week()
         tg_request(
             "editMessageText",

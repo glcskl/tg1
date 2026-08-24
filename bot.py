@@ -15,6 +15,33 @@ if not BOT_TOKEN:
 
 DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
 
+# Канал обязательной подписки
+REQUIRED_CHANNEL = "@startupspacevstu"
+CHANNEL_URL = "https://t.me/startupspacevstu"
+
+SUB_TEXT = (
+    "🔒 *Бот работает только для подписчиков канала*\n\n"
+    "1️⃣ Подпишись на канал 👇\n"
+    "2️⃣ Вернись сюда и нажми «🔄 Я подписался»"
+)
+
+
+async def is_subscribed(bot: Bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        return member.status in ("creator", "administrator", "member", "restricted")
+    except Exception as e:
+        print(f"[SubCheck] ❌ Ошибка проверки подписки у {user_id}: {e}")
+        return False
+
+
+def subscription_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📢 Подписаться на канал", url=CHANNEL_URL)
+    kb.button(text="🔄 Я подписался", callback_data="check_sub")
+    kb.adjust(1)
+    return kb.as_markup()
+
 # Данные экзаменов
 EXAMS = [
     {"date": "11.06.26", "subject": "Основы машинного обучения", "teacher": "Никонова Т.В.", "time": "8:30", "room": "4-506"},
@@ -132,6 +159,10 @@ def format_credits() -> str:
 
 # Хендлеры
 async def start(message: Message):
+    if not await is_subscribed(message.bot, message.from_user.id):
+        await message.answer(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        return
+
     week = get_current_week()
     await message.answer(
         f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
@@ -141,6 +172,11 @@ async def start(message: Message):
 
 
 async def back_to_main(cb: CallbackQuery):
+    if not await is_subscribed(cb.bot, cb.from_user.id):
+        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        await cb.answer()
+        return
+
     week = get_current_week()
     await cb.message.edit_text(
         f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
@@ -151,6 +187,11 @@ async def back_to_main(cb: CallbackQuery):
 
 
 async def show_schedule_menu(cb: CallbackQuery):
+    if not await is_subscribed(cb.bot, cb.from_user.id):
+        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        await cb.answer()
+        return
+
     week = get_current_week()
     await cb.message.edit_text(
         f"📅 *Расписание занятий*\n📅 Неделя: *{week}*\n\nВыбери день 👇",
@@ -182,6 +223,12 @@ async def show_credits(cb: CallbackQuery):
 
 async def set_day(cb: CallbackQuery):
     day = cb.data.split(":", 1)[1]
+
+    if not await is_subscribed(cb.bot, cb.from_user.id):
+        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        await cb.answer()
+        return
+
     week = get_current_week()
 
     schedule = load_schedule()
@@ -205,7 +252,7 @@ async def main():
     
     # Регистрируем хендлеры
     dp.message.register(start, F.text.in_({"/start", "start"}))
-    dp.callback_query.register(back_to_main, F.data == "back")
+    dp.callback_query.register(back_to_main, F.data.in_({"back", "check_sub"}))
     dp.callback_query.register(show_schedule_menu, F.data == "schedule")
     dp.callback_query.register(show_exams, F.data == "exams")
     dp.callback_query.register(show_credits, F.data == "credits")
