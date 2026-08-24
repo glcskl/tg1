@@ -46,13 +46,11 @@ def load_schedule() -> dict:
         return json.load(f)
 
 
-# Главное меню с 3 кнопками
+# Главное меню
 def main_keyboard():
     kb = InlineKeyboardBuilder()
     kb.button(text="📅 Расписание", callback_data="schedule")
-    kb.button(text="📝 Экзамены", callback_data="exams")
-    kb.button(text="✅ Зачеты", callback_data="credits")
-    kb.adjust(3)
+    kb.adjust(1)
     return kb.as_markup()
 
 
