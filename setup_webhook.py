@@ -12,8 +12,10 @@
 import sys
 import requests
 
-# Ваш токен Telegram-бота
-BOT_TOKEN = "8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY"
+import os
+
+# Ваш токен Telegram-бота (задаётся в переменной окружения BOT_TOKEN)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 def setup_webhook(render_url: str) -> bool:
     """

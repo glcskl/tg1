@@ -62,7 +62,7 @@
 
 | Key | Value | Синхронизация |
 |-----|-------|--------------|
-| `BOT_TOKEN` | `8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY` | - |
+| `BOT_TOKEN` | `<ВАШ_ТОКЕН>` | - |
 | `PYTHON_VERSION` | `3.11.0` | - |
 
 **Важно**: `BOT_TOKEN` - это токен вашего Telegram-бота, который вы предоставили ранее.
@@ -89,18 +89,18 @@
 Откройте в браузере следующую ссылку, заменив `YOUR_URL` на URL вашего сервиса:
 
 ```
-https://api.telegram.org/bot8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY/setWebhook?url=https://YOUR_URL.onrender.com/webhook/8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY
+https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://YOUR_URL.onrender.com/webhook/<ВАШ_ТОКЕН>
 ```
 
 Пример:
 ```
-https://api.telegram.org/bot8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY/setWebhook?url=https://tg-schedule-bot.onrender.com/webhook/8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY
+https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://tg-schedule-bot.onrender.com/webhook/<ВАШ_ТОКЕН>
 ```
 
 ### Способ 2: Через терминал
 
 ```bash
-curl -X POST "https://api.telegram.org/bot8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY/setWebhook?url=https://YOUR_URL.onrender.com/webhook/8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY"
+curl -X POST "https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://YOUR_URL.onrender.com/webhook/<ВАШ_ТОКЕН>"
 ```
 
 ### Способ 3: Проверка webhook
@@ -108,7 +108,7 @@ curl -X POST "https://api.telegram.org/bot8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvD
 Чтобы проверить статус webhook:
 
 ```
-https://api.telegram.org/bot8056980600:AAFEzMofmYqpOPVCfX_lWMUIbvDxauN3lRY/getWebhookInfo
+https://api.telegram.org/bot<ВАШ_ТОКЕН>/getWebhookInfo
 ```
 
 ## Шаг 8: Проверка работы бота
