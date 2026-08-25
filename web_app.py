@@ -146,17 +146,27 @@ def _fetch_users() -> set:
 
 
 def _save_users():
-    global _users_sha, _last_save_time
+    global _users_sha, _last_save_time, _known_users
     with _users_lock:
         merged = sorted(_known_users | _pending_users)
     payload = base64.b64encode(json.dumps(merged).encode("utf-8")).decode("utf-8")
-    body = {
-        "message": "users: автообновление списка подписчиков бота",
-        "content": payload,
-        "sha": _users_sha,
-    }
+    if _users_sha is None:
+        _fetch_users()
+
+    def _attempt(sha):
+        body = {
+            "message": "users: автообновление списка подписчиков бота",
+            "content": payload,
+            "sha": sha,
+        }
+        return _gh_request("PUT", json_body=body)
+
     try:
-        resp = _gh_request("PUT", json_body=body)
+        resp = _attempt(_users_sha)
+        if resp.status_code == 422:
+            # устаревший или отсутствующий sha — обновляем и пробуем ещё раз
+            _fetch_users()
+            resp = _attempt(_users_sha)
     except Exception as e:
         print(f"[Users] ❌ Ошибка сохранения: {e}")
         return False
@@ -184,7 +194,10 @@ def record_user(chat_id) -> None:
         _pending_users.add(int(chat_id))
         due = len(_pending_users) >= SAVE_BATCH_SIZE
     if due:
-        _save_users()
+        try:
+            _save_users()
+        except Exception as e:
+            print(f"[Users] ❌ Ошибка отложенного сохранения: {e}")
 
 
 def users_backup_worker():
@@ -196,10 +209,13 @@ def users_backup_worker():
     print(f"[Users] 📂 Загружено пользователей: {total}")
     while True:
         time.sleep(60)
-        with _users_lock:
-            pending = len(_pending_users)
-        if pending and (time.time() - _last_save_time >= SAVE_INTERVAL_SEC or pending >= SAVE_BATCH_SIZE):
-            _save_users()
+        try:
+            with _users_lock:
+                pending = len(_pending_users)
+            if pending and (time.time() - _last_save_time >= SAVE_INTERVAL_SEC or pending >= SAVE_BATCH_SIZE):
+                _save_users()
+        except Exception as e:
+            print(f"[Users] ❌ Ошибка фонового сохранения: {e}")
 
 
 if GITHUB_TOKEN:
@@ -578,7 +594,8 @@ def health():
         "status": "ok",
         "service": "tg-schedule-bot",
         "timestamp": datetime.now().isoformat(),
-        "self_ping_enabled": bool(RENDER_EXTERNAL_URL)
+        "self_ping_enabled": bool(RENDER_EXTERNAL_URL),
+        "users_backup_enabled": bool(GITHUB_TOKEN),
     }
 
 
