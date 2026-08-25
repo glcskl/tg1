@@ -5,12 +5,52 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Ping bot health endpoint
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://tg-schedule-bot-duqr.onrender.com/health)
           echo "Health check HTTP $code"
           if [ "$code" != "200" ]; then exit 1; fi
+
+      - name: Sync users from bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          python3 << 'EOF'
+          import json, os, urllib.request
+
+          url = f"https://tg-schedule-bot-duqr.onrender.com/users?key={os.environ['BOT_TOKEN']}"
+          try:
+              with urllib.request.urlopen(url, timeout=30) as r:
+                  remote = set(json.load(r))
+              print(f"Пользователей на сервере: {len(remote)}")
+          except Exception as e:
+              print(f"Не удалось получить пользователей: {e}")
+              remote = set()
+
+          local = set(json.load(open("users.json")))
+          merged = sorted(local | remote)
+          json.dump(merged, open("users.json", "w"))
+          print(f"В базе: {len(local)} -> {len(merged)}")
+          EOF
+
+      - name: Commit users.json
+        run: |
+          if [[ -n $(git status --porcelain users.json) ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add users.json
+            git commit -m "users: автообновление списка"
+            git push
+            echo "Сохранено новых пользователей"
+          else
+            echo "Изменений нет"
+          fi

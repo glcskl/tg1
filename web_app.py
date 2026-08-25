@@ -1,6 +1,5 @@
 import os
 import json
-import base64
 import threading
 import time
 from datetime import datetime
@@ -101,126 +100,39 @@ if RENDER_EXTERNAL_URL:
 
 
 # ============================================
-# ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ (users.json в репозитории через GitHub API)
+# ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ (в памяти; снапшот в users.json делает GitHub Actions)
 # ============================================
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GH_REPO = os.getenv("GH_REPO", "glcskl/tg")
-USERS_FILE = "users.json"
-SAVE_BATCH_SIZE = 5        # сохранять при каждом +5 новых пользователях
-SAVE_INTERVAL_SEC = 900    # или раз в 15 минут, если есть новые
+USERS_SNAPSHOT_URL = "https://raw.githubusercontent.com/glcskl/tg/main/users.json"
 
 _users_lock = threading.Lock()
-_known_users = set()   # всё, что загрузили из репо
-_pending_users = set() # новые, ещё не сохранённые
-_users_sha = None
-_last_save_time = 0.0
+_known_users = set()
 
 
-def _gh_request(method: str, json_body=None):
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json",
-    }
-    url = f"https://api.github.com/repos/{GH_REPO}/contents/{USERS_FILE}"
-    return requests.request(method, url, headers=headers, json=json_body, timeout=20)
-
-
-def _fetch_users() -> set:
-    global _users_sha
+def _load_known_users() -> None:
+    """При старте подгружаем ранее сохранённых пользователей из репозитория."""
+    global _known_users
     try:
-        resp = _gh_request("GET")
+        resp = requests.get(USERS_SNAPSHOT_URL, timeout=15)
+        if resp.status_code == 200:
+            with _users_lock:
+                _known_users = set(resp.json())
+        print(f"[Users] 📂 Загружено пользователей: {len(_known_users)}")
     except Exception as e:
-        print(f"[Users] ❌ Ошибка загрузки users.json: {e}")
-        return set()
-    if resp.status_code == 200:
-        data = resp.json()
-        _users_sha = data.get("sha")
-        try:
-            return set(json.loads(base64.b64decode(data["content"]).decode("utf-8")))
-        except Exception as e:
-            print(f"[Users] ⚠️ Не удалось разобрать users.json: {e}")
-    elif resp.status_code != 404:
-        print(f"[Users] ⚠️ users.json: HTTP {resp.status_code}")
-    return set()
+        print(f"[Users] ⚠️ Не удалось загрузить users.json: {e}")
 
 
-def _save_users():
-    global _users_sha, _last_save_time, _known_users
-    with _users_lock:
-        merged = sorted(_known_users | _pending_users)
-    payload = base64.b64encode(json.dumps(merged).encode("utf-8")).decode("utf-8")
-    if _users_sha is None:
-        _fetch_users()
-
-    def _attempt(sha):
-        body = {
-            "message": "users: автообновление списка подписчиков бота",
-            "content": payload,
-            "sha": sha,
-        }
-        return _gh_request("PUT", json_body=body)
-
-    try:
-        resp = _attempt(_users_sha)
-        if resp.status_code == 422:
-            # устаревший или отсутствующий sha — обновляем и пробуем ещё раз
-            _fetch_users()
-            resp = _attempt(_users_sha)
-    except Exception as e:
-        print(f"[Users] ❌ Ошибка сохранения: {e}")
-        return False
-    if resp.status_code in (200, 201):
-        with _users_lock:
-            saved = set(_pending_users)
-            _known_users |= saved
-            _pending_users.clear()
-        _users_sha = resp.json().get("content", {}).get("sha", _users_sha)
-        _last_save_time = time.time()
-        print(f"[Users] 💾 Сохранено пользователей: {len(merged)}")
-        return True
-    print(f"[Users] ❌ Ошибка сохранения: HTTP {resp.status_code} {resp.text[:200]}")
-    return False
+_load_known_users()
 
 
 def record_user(chat_id) -> None:
     if chat_id is None:
         return
-    if not GITHUB_TOKEN:
-        return
     with _users_lock:
-        if chat_id in _known_users or chat_id in _pending_users:
+        if chat_id in _known_users:
             return
-        _pending_users.add(int(chat_id))
-        due = len(_pending_users) >= SAVE_BATCH_SIZE
-    if due:
-        try:
-            _save_users()
-        except Exception as e:
-            print(f"[Users] ❌ Ошибка отложенного сохранения: {e}")
-
-
-def users_backup_worker():
-    global _known_users
-    loaded = _fetch_users()
-    with _users_lock:
-        _known_users |= loaded
-        total = len(_known_users)
-    print(f"[Users] 📂 Загружено пользователей: {total}")
-    while True:
-        time.sleep(60)
-        try:
-            with _users_lock:
-                pending = len(_pending_users)
-            if pending and (time.time() - _last_save_time >= SAVE_INTERVAL_SEC or pending >= SAVE_BATCH_SIZE):
-                _save_users()
-        except Exception as e:
-            print(f"[Users] ❌ Ошибка фонового сохранения: {e}")
-
-
-if GITHUB_TOKEN:
-    threading.Thread(target=users_backup_worker, daemon=True).start()
-    print("[Users] 🚀 Запущено резервное сохранение пользователей")
+        _known_users.add(int(chat_id))
+    print(f"[Users] ➕ Новый пользователь: {chat_id} (всего: {len(_known_users)})")
 
 
 # ============================================
@@ -595,8 +507,17 @@ def health():
         "service": "tg-schedule-bot",
         "timestamp": datetime.now().isoformat(),
         "self_ping_enabled": bool(RENDER_EXTERNAL_URL),
-        "users_backup_enabled": bool(GITHUB_TOKEN),
+        "known_users": len(_known_users),
     }
+
+
+@app.get("/users")
+def users_dump():
+    """Выгружает список пользователей (для синхронизации GitHub Actions)."""
+    if request.args.get("key") != BOT_TOKEN:
+        return {"error": "unauthorized"}, 401
+    with _users_lock:
+        return sorted(_known_users)
 
 
 @app.post(f"/webhook/{BOT_TOKEN}")
