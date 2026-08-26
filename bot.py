@@ -170,18 +170,38 @@ def format_credits() -> str:
     return "\n".join(lines).strip()
 
 
+# Последнее сообщение бота в чате (для самоочистки при новом /start)
+_last_bot_message = {}
+
+
 # Хендлеры
 async def start(message: Message):
+    chat_id = message.chat.id
     if not await is_subscribed(message.bot, message.from_user.id):
-        await message.answer(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        prev = _last_bot_message.pop(chat_id, None)
+        if prev:
+            try:
+                await message.bot.delete_message(chat_id, prev)
+            except Exception:
+                pass
+        sent = await message.answer(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
+        _last_bot_message[chat_id] = sent.message_id
         return
 
+    prev = _last_bot_message.pop(chat_id, None)
+    if prev:
+        try:
+            await message.bot.delete_message(chat_id, prev)
+        except Exception:
+            pass
+
     week = get_current_week()
-    await message.answer(
+    sent = await message.answer(
         f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
         reply_markup=main_keyboard(),
         parse_mode="Markdown"
     )
+    _last_bot_message[chat_id] = sent.message_id
 
 
 async def back_to_main(cb: CallbackQuery):

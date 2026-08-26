@@ -328,6 +328,25 @@ def tg_request(method: str, params: dict) -> dict:
         return {}
 
 
+# Последнее сообщение бота в чате (для самоочистки при новом /start)
+_last_bot_message = {}
+
+
+def _remember_message(chat_id, resp) -> None:
+    try:
+        if isinstance(resp, dict) and resp.get("ok"):
+            _last_bot_message[chat_id] = resp["result"]["message_id"]
+    except Exception:
+        pass
+
+
+def _cleanup_previous(chat_id) -> None:
+    """Удаляем предыдущее сообщение бота в этом чате, если знаем его id."""
+    message_id = _last_bot_message.pop(chat_id, None)
+    if message_id:
+        tg_request("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+
+
 def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
     user_id = (message.get("from") or {}).get("id")
@@ -336,8 +355,10 @@ def handle_message(message: dict) -> None:
     record_user(chat_id)
 
     if text in ("/start", "start"):
+        _cleanup_previous(chat_id)
+
         if user_id and not is_subscribed(user_id):
-            tg_request(
+            resp = tg_request(
                 "sendMessage",
                 {
                     "chat_id": chat_id,
@@ -346,10 +367,11 @@ def handle_message(message: dict) -> None:
                     "reply_markup": subscription_keyboard(),
                 },
             )
+            _remember_message(chat_id, resp)
             return
 
         week = get_current_week()
-        tg_request(
+        resp = tg_request(
             "sendMessage",
             {
                 "chat_id": chat_id,
@@ -358,6 +380,7 @@ def handle_message(message: dict) -> None:
                 "reply_markup": main_keyboard(),
             },
         )
+        _remember_message(chat_id, resp)
     else:
         tg_request(
             "sendMessage",
