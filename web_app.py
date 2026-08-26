@@ -242,6 +242,18 @@ def back_keyboard() -> dict:
 # ФОРМАТИРОВАНИЕ
 # ============================================
 
+# Номер пары по времени начала звонка
+PAIR_BY_START = {
+    "08:00": 1,
+    "09:50": 2,
+    "11:40": 3,
+    "14:00": 4,
+    "15:45": 5,
+    "17:30": 6,
+    "19:15": 7,
+}
+
+
 def format_day(schedule: dict, week: str, day: str) -> str:
     items = schedule.get(week, {}).get(day, [])
     day_name = dict(DAYS).get(day, day)
@@ -258,12 +270,13 @@ def format_day(schedule: dict, week: str, day: str) -> str:
         teacher = (it.get("teacher") or "").strip()
         room = (it.get("room") or "").strip()
 
+        num = PAIR_BY_START.get(time.split("-")[0], i)
         title = subject
         if kind:
             kind_emoji = {"лк": "📖", "лб": "🔬", "пр": "✏️"}.get(kind, "📚")
             title = f"{subject} ({kind_emoji} {kind})"
 
-        block = [f"{i}️⃣ ⏰ *{time}*", f"   📚 {title}"]
+        block = [f"{num}️⃣ ⏰ *{time}*", f"   📚 {title}"]
 
         if teacher:
             block.append(f"   👤 {teacher}")
