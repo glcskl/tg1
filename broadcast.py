@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-"""Рассылка сообщения всем пользователям бота из users.json.
+"""Рассылка сообщения всем пользователям бота.
 
+Список пользователей берётся напрямую с живого сервера (/users),
+ничего не хранится в репозитории.
 Использование: python broadcast.py "Текст сообщения"
-Токен берётся из переменной окружения BOT_TOKEN.
 """
 import json
 import os
 import sys
 import time
+import urllib.request
 
 import requests
+
+SERVER = "https://tg-schedule-bot-duqr.onrender.com"
 
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Использование: python broadcast.py \"Текст сообщения\"")
+        print('Использование: python broadcast.py "Текст сообщения"')
         sys.exit(1)
 
     message = sys.argv[1]
@@ -23,10 +27,14 @@ def main() -> None:
         print("❌ Нет переменной окружения BOT_TOKEN")
         sys.exit(1)
 
-    with open("users.json", encoding="utf-8") as f:
-        users = json.load(f)
+    try:
+        with urllib.request.urlopen(f"{SERVER}/users?key={token}", timeout=30) as r:
+            users = json.load(r)
+    except Exception as e:
+        print(f"❌ Не удалось получить список пользователей: {e}")
+        sys.exit(1)
 
-    print(f"Получателей в базе: {len(users)}")
+    print(f"Получателей: {len(users)}")
     sent = blocked = failed = 0
 
     for chat_id in users:
@@ -40,7 +48,7 @@ def main() -> None:
                 sent += 1
             else:
                 description = resp.get("description", "")
-                if "blocked" in description or "chat not found" in description or "deactivated" in description:
+                if any(x in description for x in ("blocked", "chat not found", "deactivated", "Unauthorized")):
                     blocked += 1
                     print(f"  ⛔ {chat_id}: {description}")
                 else:
@@ -49,9 +57,9 @@ def main() -> None:
         except Exception as e:
             failed += 1
             print(f"  ❌ {chat_id}: {e}")
-        time.sleep(1.1)  # лимит Telegram ~1 сообщение/сек на чат
+        time.sleep(1.1)
 
-    print(f"\nИтог: ✅ {sent} | ⛔ заблокировали/недоступны: {blocked} | ⚠️ ошибки: {failed}")
+    print(f"\nИтог: ✅ {sent} | ⛔ недоступны: {blocked} | ⚠️ ошибки: {failed}")
 
 
 if __name__ == "__main__":
