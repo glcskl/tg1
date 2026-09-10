@@ -11,4 +11,8 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST "${{ secrets.DEPLOY_HOOK_URL }}")
           echo "Deploy hook HTTP $code"
+          if [ "$code" = "409" ]; then
+            echo "::warning::Render returned 409 — service may be suspended. Resume it in the Render dashboard first."
+            exit 0
+          fi
           if [ "$code" != "201" ] && [ "$code" != "200" ]; then exit 1; fi
