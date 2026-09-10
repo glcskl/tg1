@@ -12,7 +12,6 @@ from flask import Flask, request
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOTENV_PATH = os.path.join(BASE_DIR, ".env")
 
-# Загружаем переменные окружения из .env (если файл есть)
 if os.path.exists(DOTENV_PATH):
     load_dotenv(DOTENV_PATH)
 else:
@@ -22,7 +21,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("Нет BOT_TOKEN. Создай .env и добавь BOT_TOKEN=...")
 
-# URL для self-ping (устанавливается автоматически на Render)
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
@@ -33,70 +31,69 @@ app = Flask(__name__)
 # SELF-PING MECHANISM (предотвращает засыпание)
 # ============================================
 
-def register_webhook():
-    """Автоматически регистрирует webhook при старте на Render."""
+def _set_webhook_with_retry(max_attempts: int = 5, delay: int = 30) -> None:
+    """Регистрирует webhook с повторными попытками (Render cold start может занять 60+ сек)."""
     if not RENDER_EXTERNAL_URL:
         return
     webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{BOT_TOKEN}"
-    try:
-        result = tg_request(
-            "setWebhook",
-            {
-                "url": webhook_url,
-                "allowed_updates": ["message", "callback_query"],
-                "drop_pending_updates": True,
-            },
-        )
-        if result.get("ok"):
-            print(f"[Webhook] ✅ Зарегистрирован: {webhook_url}")
-        else:
-            print(f"[Webhook] ❌ Ошибка: {result.get('description')}")
-    except Exception as e:
-        print(f"[Webhook] ❌ Ошибка: {e}")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = tg_request(
+                "setWebhook",
+                {
+                    "url": webhook_url,
+                    "allowed_updates": ["message", "callback_query"],
+                    "drop_pending_updates": True,
+                },
+            )
+            if result.get("ok"):
+                print(f"[Webhook] ✅ Зарегистрирован: {webhook_url}")
+                return
+            print(f"[Webhook] ⚠️ Попытка {attempt}/{max_attempts}: {result.get('description')}")
+        except Exception as e:
+            print(f"[Webhook] ⚠️ Попытка {attempt}/{max_attempts}: {e}")
+        if attempt < max_attempts:
+            print(f"[Webhook] Повтор через {delay} сек...")
+            time.sleep(delay)
+    print(f"[Webhook] ❌ Не удалось зарегистрировать webhook за {max_attempts} попыток")
 
 
-def self_ping_worker():
+def self_ping_worker() -> None:
     """
-    Фоновый поток для периодического self-ping.
-    Render усыпляет сервис через 15 минут неактивности.
-    Пинг каждые 10 минут держит сервис активным.
+    Фоновый поток для self-ping.
+    Render усыпляет free-сервис через 15 минут.
+    Пинг каждые 8 минут держит его активным.
     """
-    # Ждем 10 секунд, чтобы сервер успел запуститься, и регистрируем webhook
-    time.sleep(10)
-    register_webhook()
+    # Ждём 15 сек, чтобы Flask стартовал
+    time.sleep(15)
+    _set_webhook_with_retry(max_attempts=5, delay=30)
 
-    # Ждем 30 секунд при старте, чтобы сервер успел запуститься
+    # Дополнительная пауза перед началом пингов (cold start)
     time.sleep(30)
-    
+
+    ping_interval = 8 * 60  # 8 минут — безопаснее чем 10
+
     while True:
         try:
             if RENDER_EXTERNAL_URL:
-                # Пингуем сами себя
-                response = requests.get(
+                resp = requests.get(
                     f"{RENDER_EXTERNAL_URL}/health",
-                    timeout=30,
-                    headers={"User-Agent": "SelfPing/1.0"}
+                    timeout=90,  # cold start может занять 60+ сек
+                    headers={"User-Agent": "SelfPing/1.0"},
                 )
-                if response.status_code == 200:
-                    print(f"[Keep-Alive] ✅ Self-ping успешен")
+                if resp.status_code == 200:
+                    print(f"[Keep-Alive] ✅ Self-ping OK")
                 else:
-                    print(f"[Keep-Alive] ⚠️ Self-ping статус: {response.status_code}")
-            else:
-                # Если нет RENDER_EXTERNAL_URL, просто логируем
-                pass
+                    print(f"[Keep-Alive] ⚠️ HTTP {resp.status_code}")
         except Exception as e:
-            print(f"[Keep-Alive] ❌ Ошибка self-ping: {e}")
-        
-        # Пинг каждые 10 минут (600 секунд)
-        # Render усыпляет через 15 минут, так что 10 минут - безопасный интервал
-        time.sleep(600)
+            print(f"[Keep-Alive] ❌ {e}")
+
+        time.sleep(ping_interval)
 
 
-# Запускаем self-ping поток только если мы на Render
 if RENDER_EXTERNAL_URL:
-    ping_thread = threading.Thread(target=self_ping_worker, daemon=True)
-    ping_thread.start()
-    print(f"[Keep-Alive] 🚀 Запущен self-ping для {RENDER_EXTERNAL_URL}")
+    threading.Thread(target=self_ping_worker, daemon=True).start()
+    print(f"[Keep-Alive] 🚀 Self-ping запущен для {RENDER_EXTERNAL_URL}")
 
 
 # ============================================

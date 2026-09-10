@@ -9,8 +9,38 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping bot health endpoint
+      - name: Ping bot (attempt 1)
+        id: ping1
+        continue-on-error: true
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://tg-schedule-bot-duqr.onrender.com/health)
-          echo "Health check HTTP $code"
-          if [ "$code" != "200" ]; then exit 1; fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          echo "Attempt 1: HTTP $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Ping bot (attempt 2 — retry if failed)
+        if: steps.ping1.outputs.code != '200'
+        id: ping2
+        continue-on-error: true
+        run: |
+          echo "Waiting 30s before retry..."
+          sleep 30
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          echo "Attempt 2: HTTP $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Ping bot (attempt 3 — final retry)
+        if: steps.ping2.outcome == 'success' && steps.ping2.outputs.code != '200'
+        continue-on-error: true
+        run: |
+          echo "Waiting 60s before final retry..."
+          sleep 60
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          echo "Attempt 3: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Bot health check failed after 3 attempts (HTTP $code). Service may be suspended."
+          fi
+
+      - name: Summary
+        run: |
+          final_code="${{ steps.ping2.outputs.code || steps.ping1.outputs.code }}"
+          echo "Final status: HTTP $final_code"
