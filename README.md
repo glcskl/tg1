@@ -1,122 +1,99 @@
-# 📅 tg1 — Schedule Bot
+# tg1 — VSTU schedule Telegram bot
 
-**10 февраля – 10 сентября 2026, личный проект.** Задача: сделать так, чтобы расписание ВСТУ открывалось в Telegram, а не в пяти разных PDF. Решение: **tg1** — бот на aiogram 3 с автоопределением недели (числитель/знаменатель), экзаменами, зачётами и трехуровневым keep-alive, который переживает засыпание бесплатного тарифа Render.
+A Telegram bot that publishes the VSTU university timetable directly in chat, so students do not have to open a set of separate PDF files. The bot detects the current academic week on its own, shows classes grouped by day and time slot, and lists exams and credits separately from regular lessons.
 
-Бот работает в двух режимах: `bot.py` — polling для локального запуска, `web_app.py` — webhook на Flask для Render.
+## Features
 
----
+- Automatic numerator and denominator detection, so the bot always shows the correct week
+- Timetable kept as structured JSON instead of static documents
+- Exams and credits listed separately from regular classes
+- Subscription check against a Telegram channel before the schedule opens
+- Two run modes: long polling for local work, webhook for hosting
+- Keep-alive mechanism that keeps the free hosting tier awake
+- Scheduled broadcasts driven by GitHub Actions
 
-## Возможности
+## Tech stack
 
-- 📅 Расписание по дням недели, с автоматическим выбором числителя/знаменателя
-- 📝 Расписание экзаменов
-- ✅ Расписание зачётов
-- 🔔 Гейт подписки на Telegram-канал перед выдачей расписания
-- 📢 Рассылка сообщения всем пользователям бота
-- 🔄 Self-ping, UptimeRobot и GitHub Actions против засыпания Render
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3 |
+| Framework | aiogram 3 |
+| Web layer | Flask |
+| WSGI server | Gunicorn |
+| Configuration | python-dotenv |
+| HTTP client | requests |
+| Hosting | Render, free tier |
 
-## Кнопки
+## Getting started
 
-| Кнопка | Действие |
-|---|---|
-| `/start` | Приветствие и главное меню |
-| 📅 Расписание | Выбор дня недели |
-| 📝 Экзамены | Расписание экзаменов |
-| ✅ Зачеты | Расписание зачётов |
-| 🔙 Назад | Возврат в меню |
+### Requirements
 
-> Экзамены и зачёты доступны **только в webhook-режиме** (`web_app.py`). В `bot.py` хендлеры зарегистрированы, но кнопок в меню нет — см. «Известные ограничения».
+- Python 3.11 or newer
+- A bot token from [@BotFather](https://t.me/BotFather)
 
-## Быстрый старт
+### Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `BOT_TOKEN` | yes | Token issued by BotFather |
+| `BOT_URL` | webhook mode | Public HTTPS URL of the deployed instance |
+| `PING_INTERVAL` | no | Keep-alive interval in seconds |
+| `RENDER_EXTERNAL_URL` | no | Injected by Render automatically |
+
+Create a `.env` file in the project root:
+
+```
+BOT_TOKEN=123456:ABCDEF...
+```
+
+### Installation
 
 ```bash
 git clone https://github.com/glcskl/tg1.git
 cd tg1
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-echo "BOT_TOKEN=your_bot_token_here" > .env
-python bot.py            # polling
 ```
 
-## Переменные окружения
+### Running
 
-| Переменная | Где читается | Назначение |
-|---|---|---|
-| `BOT_TOKEN` | `bot.py`, `web_app.py`, `broadcast.py`, `setup_webhook.py` | токен Telegram-бота |
-| `RENDER_EXTERNAL_URL` | `web_app.py` | внешний URL для self-ping |
-| `BOT_URL` | `keep_alive.py` | адрес сервиса для внешнего пинга |
-| `PING_INTERVAL` | `keep_alive.py` | интервал пинга в минутах |
+Local development with long polling:
 
-Канал для проверки подписки зашит в код: `CHANNEL_URL = "https://t.me/startupspacevstu"` (`bot.py:20`). Чтобы поменять — правь константу.
-
-## HTTP-эндпоинты (`web_app.py`)
-
-| Метод | Путь | Назначение |
-|---|---|---|
-| `GET` | `/` | проверка живости |
-| `GET` | `/health` | health check для мониторинга |
-| `GET` | `/users` | список id пользователей, нужен для рассылки |
-| `POST` | `/webhook/{BOT_TOKEN}` | приём апдейтов от Telegram |
-
-Токен прямо в пути вебхука — так он попадает в логи Render и в историю браузера. Для публичного сервиса лучше вынести в заголовок.
-
-## Keep-Alive: три уровня
-
-На бесплатном тарифе Render сервис засыпает после 15 минут простоя, и первый запрос идёт 30–60 секунд.
-
-1. **Self-Ping** — `web_app.py` пингует сам себя каждые 10 минут в фоновом потоке. Настраивать не нужно.
-2. **UptimeRobot** — внешний бесплатный монитор каждые 5 минут на `https://<bot>.onrender.com/health`.
-3. **keep_alive.py** — локальный скрипт: `python keep_alive.py --url https://<bot>.onrender.com`
-
-Плюс GitHub Actions: `keep-alive.yml`, `broadcast.yml`, `redeploy.yml`.
-
-📖 Подробности: [KEEP_ALIVE_GUIDE.md](KEEP_ALIVE_GUIDE.md), деплой — [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md)
-
-## Формат `schedule.json`
-
-```json
-{
-  "числитель": {
-    "пн": [
-      {
-        "time": "09:50-11:25",
-        "kind": "лб",
-        "subject": "Системы управления web-контентом",
-        "teacher": "Быковский Д.И.",
-        "room": "212"
-      }
-    ]
-  },
-  "знаменатель": { }
-}
+```bash
+python bot.py
 ```
 
-Типы занятий: `лк` — лекция, `лб` — лабораторная, `пр` — практика.
+Webhook mode, which is what the hosting platform uses:
 
-## Структура
-
-```
-tg1/
-├── bot.py                polling-режим (aiogram) — локальный запуск
-├── web_app.py            webhook-режим (Flask) — Render, self-ping, /users
-├── broadcast.py          рассылка всем пользователям через /users
-├── keep_alive.py         внешний пинг по расписанию
-├── setup_webhook.py      регистрация и снятие вебхука
-├── schedule.json         расписание
-├── requirements.txt      aiogram, flask, gunicorn, requests, python-dotenv
-├── Procfile              команда запуска для Render
-├── render.yaml           конфигурация Render
-└── .github/workflows/    keep-alive, broadcast, redeploy
+```bash
+python setup_webhook.py
+gunicorn web_app:app
 ```
 
-## Известные ограничения
+## Project structure
 
-- **Экзамены и зачёты недоступны в polling-режиме.** В `bot.py:236-252` хендлеры `show_exams` и `show_credits` зарегистрированы, но `main_keyboard()` (`bot.py:78-82`) создаёт только кнопку «Расписание». Кнопки есть лишь в `web_app.py:461,477`. Локально `python bot.py` — эти разделы не откроются.
-- **Экзамены и зачёты зашиты в код**, а не лежат в `schedule.json` (`bot.py:46` и `bot.py:54`). Каждое изменение требует деплоя.
-- **Определение недели наивное.** `get_current_week()` берёт чётность ISO-номера недели. У нового года чётность сбивается, и привязки к началу семестра нет.
-- **`users.json` в репозитории отсутствует.** `web_app.py:103` пытается загрузить снапшот с raw.githubusercontent — файла нет, поэтому при старте печатается предупреждение и `_known_users` остаётся пустым. На рассылку это не влияет: `broadcast.py` берёт список живьём с `/users`. Снапшот — мёртвый код.
-- **Тестов нет**, проверка только вручную через `/health`.
-- **Лицензии нет.** README в старой версии заявлял MIT, но файла `LICENSE` в репозитории не существует — сейчас это исправлено.
+```
+bot.py            long-polling entry point
+web_app.py        Flask application serving the Telegram webhook
+setup_webhook.py  registers the webhook URL with Telegram
+broadcast.py      scheduled broadcast sender
+keep_alive.py     keep-alive pinger for the free hosting tier
+schedule.json     timetable, exams and credits
+render.yaml       Render service blueprint
+Procfile          process definition for the hosting platform
+```
 
-## Лицензия
+## Deployment
 
-Файл `LICENSE` отсутствует. Формально все права защищены. Добавить лицензию — скажи, какой.
+`render.yaml` lets Render provision the web service straight from the blueprint. Routine maintenance is handled by three GitHub Actions workflows:
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `keep-alive.yml` | every 5 minutes | pings the service so the free tier does not sleep |
+| `redeploy.yml` | manual | forces a redeploy when the service has been stopped |
+| `broadcast.yml` | manual | sends a scheduled broadcast |
+
+## Notes
+
+This project is personal and is not affiliated with the university. It reads no data from any university system and is maintained on a best-effort basis.
