@@ -100,7 +100,7 @@ if RENDER_EXTERNAL_URL:
 # ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ (в памяти; снапшот в users.json делает GitHub Actions)
 # ============================================
 
-USERS_SNAPSHOT_URL = "https://raw.githubusercontent.com/glcskl/tg/main/users.json"
+USERS_SNAPSHOT_URL = "https://raw.githubusercontent.com/glcskl/tg1/main/users.json"
 
 _users_lock = threading.Lock()
 _known_users = set()
