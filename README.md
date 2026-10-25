@@ -1,4 +1,4 @@
-# vstu-schedule-bot — VSTU schedule Telegram bot
+# tg1 — VSTU schedule Telegram bot
 
 A Telegram bot that publishes the VSTU university timetable directly in chat, so students do not have to open a set of separate PDF files. The bot detects the current academic week on its own, shows classes grouped by day and time slot, and lists exams and credits separately from regular lessons.
 
