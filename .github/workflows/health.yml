@@ -1,0 +1,42 @@
+name: Health log
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: health-log
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ping bot
+        id: ping
+        continue-on-error: true
+        run: python3 health_check.py
+
+      - name: Commit health.log
+        run: |
+          git config user.name "glcskl"
+          git config user.email "188385208+glcskl@users.noreply.github.com"
+          git add health.log
+          if git diff --cached --quiet; then
+            echo "health.log unchanged"
+            exit 0
+          fi
+          git commit -q -m "chore: health log $(date -u +%F)"
+          git push
+
+      - name: Fail when the bot is down
+        if: steps.ping.outcome != 'success'
+        run: |
+          echo "::error::Health check failed, last line: $(tail -n 1 health.log)"
+          exit 1
