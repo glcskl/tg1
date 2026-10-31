@@ -79,6 +79,8 @@ web_app.py        Flask application serving the Telegram webhook
 setup_webhook.py  registers the webhook URL with Telegram
 broadcast.py      scheduled broadcast sender
 keep_alive.py     keep-alive pinger for the free hosting tier
+health_check.py   pings /health and appends the result to health.log
+tests/            pytest suite for the web app and the health probe
 schedule.json     timetable, exams and credits
 render.yaml       Render service blueprint
 Procfile          process definition for the hosting platform
@@ -93,6 +95,23 @@ Procfile          process definition for the hosting platform
 | `keep-alive.yml` | every 5 minutes | pings the service so the free tier does not sleep |
 | `redeploy.yml` | manual | forces a redeploy when the service has been stopped |
 | `broadcast.yml` | manual | sends a scheduled broadcast |
+
+## Tests and health log
+
+`tests/` uses pytest to cover the Flask routes, the schedule formatting and the health probe. `tests.yml` runs the suite on every push, and two more workflows track the deployed service:
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `tests.yml` | push, pull request | runs `python -m pytest -q` |
+| `health.yml` | daily | pings `/health`, adds the status code and latency to `health.log`, commits it and fails the run when the service is down |
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest -q
+python health_check.py
+```
+
+`health.log` is append-only: `<UTC time>\t<HTTP code>\t<latency>\t<up|down>`.
 
 ## Notes
 
