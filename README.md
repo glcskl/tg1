@@ -4,7 +4,7 @@ A Telegram bot that publishes the VSTU university timetable directly in chat, so
 
 ## Features
 
-- Automatic numerator and denominator detection, so the bot always shows the correct week
+- Automatic numerator/denominator detection, plus manual week selection (current, next or a specific one) for planning ahead
 - Timetable kept as structured JSON instead of static documents
 - «Зачёты» and «Экзамены» buttons with per-group lists (default group: `4Ээб-4`)
 - Group switching from the main menu or from an assessment list

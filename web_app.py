@@ -3,6 +3,7 @@ import json
 import threading
 import time
 from datetime import datetime
+from typing import Optional
 
 import requests
 from dotenv import load_dotenv
@@ -137,6 +138,12 @@ def record_user(chat_id) -> None:
 # ============================================
 
 DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
+WEEKS = ("числитель", "знаменатель")
+
+
+def other_week(week: str) -> str:
+    """Возвращает противоположную неделю (числитель <-> знаменатель)."""
+    return "знаменатель" if week == "числитель" else "числитель"
 
 # Канал обязательной подписки
 REQUIRED_CHANNEL = "@startupspacevstu"
@@ -265,12 +272,40 @@ def assessment_keyboard(prefix: str) -> dict:
     }
 
 
-def day_keyboard() -> dict:
+def week_keyboard() -> dict:
+    """Выбор недели: текущая, следующая или конкретный числитель/знаменатель."""
+    current = get_current_week()
+    return {
+        "inline_keyboard": [
+            [{"text": f"📍 Текущая ({current})", "callback_data": "week:auto"}],
+            [{"text": f"➡️ Следующая ({other_week(current)})", "callback_data": "week:next"}],
+            [
+                {"text": "Числитель", "callback_data": "week:числитель"},
+                {"text": "Знаменатель", "callback_data": "week:знаменатель"},
+            ],
+            [{"text": "🔙 В меню", "callback_data": "back"}],
+        ]
+    }
+
+
+def week_menu_text() -> str:
+    return (
+        f"📅 *Расписание занятий*\n"
+        f"📍 Сейчас: *{get_current_week()}*\n\n"
+        "Выбери неделю 👇"
+    )
+
+
+def day_keyboard(week: Optional[str] = None) -> dict:
+    week = week or get_current_week()
     days_row = [
-        {"text": title, "callback_data": f"day:{key}"}
+        {"text": title, "callback_data": f"day:{week}:{key}"}
         for key, title in DAYS
     ]
-    back_row = [{"text": "🔙 Назад", "callback_data": "back"}]
+    back_row = [
+        {"text": "🗓 Выбрать неделю", "callback_data": "weeks"},
+        {"text": "🔙 В меню", "callback_data": "back"},
+    ]
     return {"inline_keyboard": [days_row, back_row]}
 
 
@@ -539,17 +574,44 @@ def handle_callback_query(callback_query: dict) -> None:
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id, "text": "Группа обновлена"})
         return
 
-    # Кнопка "Расписание"
-    if data == "schedule":
-        week = get_current_week()
+    # Кнопка "Расписание" — сначала выбираем неделю
+    if data in ("schedule", "weeks"):
         tg_request(
             "editMessageText",
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"📅 *Расписание занятий*\n📅 Неделя: *{week}*\n\nВыбери день 👇",
+                "text": week_menu_text(),
                 "parse_mode": "Markdown",
-                "reply_markup": day_keyboard(),
+                "reply_markup": week_keyboard(),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Выбор недели: текущая, следующая или конкретный числитель/знаменатель
+    if data.startswith("week:"):
+        choice = data.split(":", 1)[1]
+        current = get_current_week()
+
+        if choice == "auto":
+            week = current
+        elif choice == "next":
+            week = other_week(current)
+        elif choice in WEEKS:
+            week = choice
+        else:
+            tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+            return
+
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"📅 *Расписание занятий*\n📐 Неделя: *{week}*\n\nВыбери день 👇",
+                "parse_mode": "Markdown",
+                "reply_markup": day_keyboard(week),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
@@ -645,10 +707,15 @@ def handle_callback_query(callback_query: dict) -> None:
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id, "text": f"Группа: {group}"})
         return
 
-    # Выбор дня
+    # Выбор дня (новый формат: day:<неделя>:<день>, старый: day:<день>)
     if data.startswith("day:"):
-        day = data.split(":", 1)[1]
-        week = get_current_week()
+        parts = data.split(":")
+        if len(parts) == 3:
+            week, day = parts[1], parts[2]
+        else:
+            week, day = get_current_week(), parts[1]
+        if week not in WEEKS:
+            week = get_current_week()
 
         schedule = load_schedule()
         text = format_day(schedule, week, day)
@@ -660,7 +727,7 @@ def handle_callback_query(callback_query: dict) -> None:
                 "message_id": message_id,
                 "text": text,
                 "parse_mode": "Markdown",
-                "reply_markup": day_keyboard(),
+                "reply_markup": day_keyboard(week),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})

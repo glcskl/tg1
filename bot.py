@@ -15,6 +15,12 @@ if not BOT_TOKEN:
     raise RuntimeError("Нет BOT_TOKEN. Создай .env и добавь BOT_TOKEN=...")
 
 DAYS = [("пн", "Понедельник"), ("вт", "Вторник"), ("ср", "Среда"), ("чт", "Четверг"), ("пт", "Пятница")]
+WEEKS = ("числитель", "знаменатель")
+
+
+def other_week(week: str) -> str:
+    """Возвращает противоположную неделю (числитель <-> знаменатель)."""
+    return "знаменатель" if week == "числитель" else "числитель"
 
 # Канал обязательной подписки
 REQUIRED_CHANNEL = "@startupspacevstu"
@@ -125,13 +131,36 @@ def assessment_keyboard(prefix: str):
     return kb.as_markup()
 
 
+# Клавиатура выбора недели
+def week_keyboard():
+    current = get_current_week()
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"📍 Текущая ({current})", callback_data="week:auto")
+    kb.button(text=f"➡️ Следующая ({other_week(current)})", callback_data="week:next")
+    kb.button(text="Числитель", callback_data="week:числитель")
+    kb.button(text="Знаменатель", callback_data="week:знаменатель")
+    kb.button(text="🔙 В меню", callback_data="back")
+    kb.adjust(1, 1, 2, 1)
+    return kb.as_markup()
+
+
+def week_menu_text() -> str:
+    return (
+        f"📅 *Расписание занятий*\n"
+        f"📍 Сейчас: *{get_current_week()}*\n\n"
+        "Выбери неделю 👇"
+    )
+
+
 # Клавиатура дней недели
-def day_keyboard():
+def day_keyboard(week=None):
+    week = week or get_current_week()
     kb = InlineKeyboardBuilder()
     for key, title in DAYS:
-        kb.button(text=title, callback_data=f"day:{key}")
-    kb.button(text="🔙 Назад", callback_data="back")
-    kb.adjust(5, 1)
+        kb.button(text=title, callback_data=f"day:{week}:{key}")
+    kb.button(text="🗓 Выбрать неделю", callback_data="weeks")
+    kb.button(text="🔙 В меню", callback_data="back")
+    kb.adjust(5, 2)
     return kb.as_markup()
 
 
@@ -298,10 +327,46 @@ async def show_schedule_menu(cb: CallbackQuery):
     if not await ensure_subscribed(cb):
         return
 
-    week = get_current_week()
     await cb.message.edit_text(
-        f"📅 *Расписание занятий*\n📅 Неделя: *{week}*\n\nВыбери день 👇",
-        reply_markup=day_keyboard(),
+        week_menu_text(),
+        reply_markup=week_keyboard(),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+
+async def back_to_weeks(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+
+    await cb.message.edit_text(
+        week_menu_text(),
+        reply_markup=week_keyboard(),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+
+async def select_week(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+
+    choice = cb.data.split(":", 1)[1]
+    current = get_current_week()
+
+    if choice == "auto":
+        week = current
+    elif choice == "next":
+        week = other_week(current)
+    elif choice in WEEKS:
+        week = choice
+    else:
+        await cb.answer()
+        return
+
+    await cb.message.edit_text(
+        f"📅 *Расписание занятий*\n📐 Неделя: *{week}*\n\nВыбери день 👇",
+        reply_markup=day_keyboard(week),
         parse_mode="Markdown"
     )
     await cb.answer()
@@ -404,15 +469,20 @@ async def set_day(cb: CallbackQuery):
     if not await ensure_subscribed(cb):
         return
 
-    day = cb.data.split(":", 1)[1]
-    week = get_current_week()
+    parts = cb.data.split(":")
+    if len(parts) == 3:
+        week, day = parts[1], parts[2]
+    else:
+        week, day = get_current_week(), parts[1]
+    if week not in WEEKS:
+        week = get_current_week()
 
     schedule = load_schedule()
     text = format_day(schedule, week, day)
 
     await cb.message.edit_text(
         text,
-        reply_markup=day_keyboard(),
+        reply_markup=day_keyboard(week),
         parse_mode="Markdown"
     )
     await cb.answer()
@@ -429,7 +499,9 @@ async def main():
     # Регистрируем хендлеры
     dp.message.register(start, F.text.in_({"/start", "start"}))
     dp.callback_query.register(back_to_main, F.data.in_({"back", "check_sub"}))
+    dp.callback_query.register(back_to_weeks, F.data == "weeks")
     dp.callback_query.register(show_schedule_menu, F.data == "schedule")
+    dp.callback_query.register(select_week, F.data.startswith("week:"))
     dp.callback_query.register(show_exams, F.data == "exams")
     dp.callback_query.register(show_credits, F.data == "credits")
     dp.callback_query.register(set_day, F.data.startswith("day:"))
