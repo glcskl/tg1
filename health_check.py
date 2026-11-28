@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-URL = os.environ.get("BOT_HEALTH_URL", "https://tg-schedule-bot-duqr.onrender.com/health")
+URL = os.environ.get("BOT_HEALTH_URL", "https://tg1-schedule-bot.onrender.com/health")
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "health.log")
 TIMEOUT = 120
 

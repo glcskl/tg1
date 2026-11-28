@@ -77,7 +77,7 @@
 
 После успешного деплоя:
 
-1. Render предоставит URL вашего сервиса (например, `https://tg-schedule-bot.onrender.com`)
+1. Render предоставит URL вашего сервиса (например, `https://tg1-schedule-bot.onrender.com`)
 2. Скопируйте этот URL - он понадобится для настройки webhook
 
 ## Шаг 7: Настройка Webhook для Telegram-бота
@@ -94,7 +94,7 @@ https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://YOUR_URL.
 
 Пример:
 ```
-https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://tg-schedule-bot.onrender.com/webhook/<ВАШ_ТОКЕН>
+https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=https://tg1-schedule-bot.onrender.com/webhook/<ВАШ_ТОКЕН>
 ```
 
 ### Способ 2: Через терминал

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tg-schedule-bot
+    name: tg1-schedule-bot
     env: python
     region: oregon
     plan: free

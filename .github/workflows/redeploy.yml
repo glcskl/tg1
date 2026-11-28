@@ -7,12 +7,16 @@ jobs:
   redeploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render deploy hook
+      - name: Trigger Render deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dc598vl6e07s739u2ju0
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST "${{ secrets.DEPLOY_HOOK_URL }}")
-          echo "Deploy hook HTTP $code"
-          if [ "$code" = "409" ]; then
-            echo "::warning::Render returned 409 — service may be suspended. Resume it in the Render dashboard first."
-            exit 0
-          fi
-          if [ "$code" != "201" ] && [ "$code" != "200" ]; then exit 1; fi
+          curl --fail --silent --show-error \
+            --request POST \
+            --url "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{"clearCache":"do_not_clear"}' \
+            --output /dev/null \
+            --write-out "Deploy triggered: HTTP %{http_code}\n"

@@ -6,7 +6,7 @@
     python setup_webhook.py <RENDER_URL>
 
 Пример:
-    python setup_webhook.py https://tg-schedule-bot.onrender.com
+    python setup_webhook.py https://tg1-schedule-bot.onrender.com
 """
 
 import sys
@@ -107,8 +107,8 @@ def main():
         print("  info    - показать информацию о webhook")
         print("  delete  - удалить webhook")
         print("\nПримеры:")
-        print("  python setup_webhook.py https://tg-schedule-bot.onrender.com")
-        print("  python setup_webhook.py https://tg-schedule-bot.onrender.com info")
+        print("  python setup_webhook.py https://tg1-schedule-bot.onrender.com")
+        print("  python setup_webhook.py https://tg1-schedule-bot.onrender.com info")
         sys.exit(1)
 
     render_url = sys.argv[1]

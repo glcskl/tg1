@@ -122,9 +122,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры:
-  python keep_alive.py --url https://tg-schedule-bot.onrender.com
-  python keep_alive.py --url https://tg-schedule-bot.onrender.com --interval 12
-  BOT_URL=https://tg-schedule-bot.onrender.com python keep_alive.py
+  python keep_alive.py --url https://tg1-schedule-bot.onrender.com
+  python keep_alive.py --url https://tg1-schedule-bot.onrender.com --interval 12
+  BOT_URL=https://tg1-schedule-bot.onrender.com python keep_alive.py
         """
     )
     
@@ -132,7 +132,7 @@ def main():
         "--url", "-u",
         type=str,
         default=os.getenv("BOT_URL", ""),
-        help="URL вашего бота на Render (например, https://tg-schedule-bot.onrender.com)"
+        help="URL вашего бота на Render (например, https://tg1-schedule-bot.onrender.com)"
     )
     
     parser.add_argument(
@@ -155,7 +155,7 @@ def main():
         print("❌ Ошибка: нужно указать URL бота")
         print("Используйте --url или установите переменную окружения BOT_URL")
         print("\nПример:")
-        print("  python keep_alive.py --url https://tg-schedule-bot.onrender.com")
+        print("  python keep_alive.py --url https://tg1-schedule-bot.onrender.com")
         sys.exit(1)
     
     # Проверяем что URL выглядит правильно

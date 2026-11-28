@@ -13,7 +13,7 @@ import urllib.request
 
 import requests
 
-SERVER = "https://tg-schedule-bot-duqr.onrender.com"
+SERVER = "https://tg1-schedule-bot.onrender.com"
 
 
 def main() -> None:

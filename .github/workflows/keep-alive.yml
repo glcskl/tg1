@@ -13,7 +13,7 @@ jobs:
         id: ping1
         continue-on-error: true
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg1-schedule-bot.onrender.com/health)
           echo "Attempt 1: HTTP $code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
@@ -24,7 +24,7 @@ jobs:
         run: |
           echo "Waiting 30s before retry..."
           sleep 30
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg1-schedule-bot.onrender.com/health)
           echo "Attempt 2: HTTP $code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
@@ -34,7 +34,7 @@ jobs:
         run: |
           echo "Waiting 60s before final retry..."
           sleep 60
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg-schedule-bot-duqr.onrender.com/health)
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://tg1-schedule-bot.onrender.com/health)
           echo "Attempt 3: HTTP $code"
           if [ "$code" != "200" ]; then
             echo "::warning::Bot health check failed after 3 attempts (HTTP $code). Service may be suspended."
