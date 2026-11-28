@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("Нет BOT_TOKEN. Создай .env и добавь BOT_TOKEN=...")
@@ -60,6 +61,10 @@ CREDITS = [
 ]
 
 # Определяем текущую неделю (числитель/знаменатель)
+DEFAULT_GROUP = "4Ээб-4"
+USER_GROUPS = {}
+
+
 def get_current_week() -> str:
     week_number = datetime.now().isocalendar()[1]
     if week_number % 2 == 0:
@@ -69,14 +74,53 @@ def get_current_week() -> str:
 
 
 def load_schedule() -> dict:
-    with open("schedule.json", "r", encoding="utf-8") as f:
+    with open(os.path.join(BASE_DIR, "schedule.json"), "r", encoding="utf-8") as f:
         return json.load(f)
 
 
+def load_assessments() -> dict:
+    with open(os.path.join(BASE_DIR, "assessments.json"), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def all_groups() -> list:
+    data = load_assessments()
+    return sorted(set(data.get("exams", {})) | set(data.get("credits", {})))
+
+
+def get_group(user_id) -> str:
+    return USER_GROUPS.get(user_id, DEFAULT_GROUP)
+
+
+def set_group(user_id, group: str) -> None:
+    if user_id:
+        USER_GROUPS[user_id] = group
+
+
 # Главное меню
-def main_keyboard():
+def main_keyboard(user_id=None):
     kb = InlineKeyboardBuilder()
     kb.button(text="📅 Расписание", callback_data="schedule")
+    kb.button(text="✅ Зачёты", callback_data="credits")
+    kb.button(text="📝 Экзамены", callback_data="exams")
+    kb.button(text=f"👥 Группа: {get_group(user_id)}", callback_data="groups")
+    kb.adjust(1, 2, 1)
+    return kb.as_markup()
+
+
+def group_keyboard(prefix: str):
+    kb = InlineKeyboardBuilder()
+    for group in all_groups():
+        kb.button(text=group, callback_data=f"{prefix}:{group}")
+    kb.button(text="🔙 Назад", callback_data="back")
+    kb.adjust(2)
+    return kb.as_markup()
+
+
+def assessment_keyboard(prefix: str):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="👥 Сменить группу", callback_data=prefix)
+    kb.button(text="🔙 Назад", callback_data="back")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -170,6 +214,39 @@ def format_credits() -> str:
     return "\n".join(lines).strip()
 
 
+def format_group_assessments(kind: str, group: str) -> str:
+    title = "ЭКЗАМЕНЫ" if kind == "exams" else "ЗАЧЕТЫ"
+    icon = "📝" if kind == "exams" else "✅"
+    items = load_assessments().get(kind, {}).get(group, [])
+    lines = [f"{icon} *{title}*\n👥 Группа: *{group}*\n"]
+    if not items:
+        return "\n".join(lines).strip() + "\n\nНет данных по этой группе."
+    for item in items:
+        weekday = (item.get("weekday") or "").strip()
+        date_line = f"📅 *{item['date']}*"
+        if weekday:
+            date_line += f" ({weekday})"
+        lines.append(date_line)
+        lines.append(f"📚 {item['subject']}")
+        if item.get("teacher"):
+            lines.append(f"👤 {item['teacher']}")
+        lines.append(f"⏰ {item['time']}   🏫 {item['room']}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+async def ensure_subscribed(cb: CallbackQuery) -> bool:
+    if await is_subscribed(cb.bot, cb.from_user.id):
+        return True
+    await cb.message.edit_text(
+        SUB_TEXT,
+        reply_markup=subscription_keyboard(),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+    return False
+
+
 # Последнее сообщение бота в чате (для самоочистки при новом /start)
 _last_bot_message = {}
 
@@ -197,32 +274,28 @@ async def start(message: Message):
 
     week = get_current_week()
     sent = await message.answer(
-        f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
-        reply_markup=main_keyboard(),
+        f"👋 Привет!\n📅 Текущая неделя: *{week}*\n👥 Группа: *{get_group(message.from_user.id)}*\n\nВыбери действие 👇",
+        reply_markup=main_keyboard(message.from_user.id),
         parse_mode="Markdown"
     )
     _last_bot_message[chat_id] = sent.message_id
 
 
 async def back_to_main(cb: CallbackQuery):
-    if not await is_subscribed(cb.bot, cb.from_user.id):
-        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
-        await cb.answer()
+    if not await ensure_subscribed(cb):
         return
 
     week = get_current_week()
     await cb.message.edit_text(
-        f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
-        reply_markup=main_keyboard(),
+        f"👋 Привет!\n📅 Текущая неделя: *{week}*\n👥 Группа: *{get_group(cb.from_user.id)}*\n\nВыбери действие 👇",
+        reply_markup=main_keyboard(cb.from_user.id),
         parse_mode="Markdown"
     )
     await cb.answer()
 
 
 async def show_schedule_menu(cb: CallbackQuery):
-    if not await is_subscribed(cb.bot, cb.from_user.id):
-        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
-        await cb.answer()
+    if not await ensure_subscribed(cb):
         return
 
     week = get_current_week()
@@ -235,33 +308,103 @@ async def show_schedule_menu(cb: CallbackQuery):
 
 
 async def show_exams(cb: CallbackQuery):
-    text = format_exams()
+    if not await ensure_subscribed(cb):
+        return
     await cb.message.edit_text(
-        text,
-        reply_markup=back_keyboard(),
+        format_group_assessments("exams", get_group(cb.from_user.id)),
+        reply_markup=assessment_keyboard("change_exams"),
         parse_mode="Markdown"
     )
     await cb.answer()
 
 
 async def show_credits(cb: CallbackQuery):
-    text = format_credits()
+    if not await ensure_subscribed(cb):
+        return
     await cb.message.edit_text(
-        text,
-        reply_markup=back_keyboard(),
+        format_group_assessments("credits", get_group(cb.from_user.id)),
+        reply_markup=assessment_keyboard("change_credits"),
         parse_mode="Markdown"
     )
     await cb.answer()
 
 
-async def set_day(cb: CallbackQuery):
-    day = cb.data.split(":", 1)[1]
+async def choose_group(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    await cb.message.edit_text(
+        f"👥 Выбери группу (сейчас: *{get_group(cb.from_user.id)}*)",
+        reply_markup=group_keyboard("group"),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
 
-    if not await is_subscribed(cb.bot, cb.from_user.id):
-        await cb.message.edit_text(SUB_TEXT, reply_markup=subscription_keyboard(), parse_mode="Markdown")
-        await cb.answer()
+
+async def set_group_from_menu(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    set_group(cb.from_user.id, cb.data.split(":", 1)[1])
+    await cb.message.edit_text(
+        f"👥 Группа: *{get_group(cb.from_user.id)}*\n\nВыбери действие 👇",
+        reply_markup=main_keyboard(cb.from_user.id),
+        parse_mode="Markdown"
+    )
+    await cb.answer("Группа обновлена")
+
+
+async def change_exams_group(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    await cb.message.edit_text(
+        f"📝 Экзамены — выбери группу (сейчас: *{get_group(cb.from_user.id)}*)",
+        reply_markup=group_keyboard("exams_group"),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+
+async def change_credits_group(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    await cb.message.edit_text(
+        f"✅ Зачёты — выбери группу (сейчас: *{get_group(cb.from_user.id)}*)",
+        reply_markup=group_keyboard("credits_group"),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+
+async def set_exams_group(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    group = cb.data.split(":", 1)[1]
+    set_group(cb.from_user.id, group)
+    await cb.message.edit_text(
+        format_group_assessments("exams", group),
+        reply_markup=assessment_keyboard("change_exams"),
+        parse_mode="Markdown"
+    )
+    await cb.answer(f"Группа: {group}")
+
+
+async def set_credits_group(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
+        return
+    group = cb.data.split(":", 1)[1]
+    set_group(cb.from_user.id, group)
+    await cb.message.edit_text(
+        format_group_assessments("credits", group),
+        reply_markup=assessment_keyboard("change_credits"),
+        parse_mode="Markdown"
+    )
+    await cb.answer(f"Группа: {group}")
+
+
+async def set_day(cb: CallbackQuery):
+    if not await ensure_subscribed(cb):
         return
 
+    day = cb.data.split(":", 1)[1]
     week = get_current_week()
 
     schedule = load_schedule()
@@ -290,6 +433,12 @@ async def main():
     dp.callback_query.register(show_exams, F.data == "exams")
     dp.callback_query.register(show_credits, F.data == "credits")
     dp.callback_query.register(set_day, F.data.startswith("day:"))
+    dp.callback_query.register(choose_group, F.data == "groups")
+    dp.callback_query.register(set_group_from_menu, F.data.startswith("group:"))
+    dp.callback_query.register(change_exams_group, F.data == "change_exams")
+    dp.callback_query.register(set_exams_group, F.data.startswith("exams_group:"))
+    dp.callback_query.register(change_credits_group, F.data == "change_credits")
+    dp.callback_query.register(set_credits_group, F.data.startswith("credits_group:"))
     dp.message.register(fallback)
     
     print("Бот запущен!")

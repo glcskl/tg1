@@ -16,6 +16,7 @@ from web_app import (
     format_day,
     format_exams,
     get_current_week,
+    group_keyboard,
     load_schedule,
     main_keyboard,
 )
@@ -166,3 +167,115 @@ def test_schedule_json_is_valid_utf8_json():
         data = json.load(handle)
 
     assert "числитель" in data and "знаменатель" in data
+
+
+def test_assessments_contain_required_groups():
+    data = web_app.load_assessments()
+
+    assert set(data) == {"exams", "credits"}
+    for group in ("4Ээб-4", "4Ээб-4а"):
+        assert group in data["exams"]
+        assert group in data["credits"]
+        assert data["exams"][group]
+        assert data["credits"][group]
+
+
+def test_format_group_assessments_uses_selected_group():
+    exams = web_app.format_group_assessments("exams", "4Ээб-4")
+    credits = web_app.format_group_assessments("credits", "4Ээб-4")
+
+    assert "*ЭКЗАМЕНЫ*" in exams
+    assert "Группа: *4Ээб-4*" in exams
+    assert "Управление проектом" in exams
+    assert "*ЗАЧЕТЫ*" in credits
+    assert "Группа: *4Ээб-4*" in credits
+    assert "Анализ хозяйственной деятельности" in credits
+
+    other = web_app.format_group_assessments("exams", "4Ээб-4а")
+    assert "Группа: *4Ээб-4а*" in other
+    assert "Экономика и управление инновациями" in other
+    assert "Нет данных" in web_app.format_group_assessments("exams", "нет такой группы")
+
+
+def test_keyboards_offer_assessments_and_group_switch():
+    keyboard = main_keyboard(42)["inline_keyboard"]
+    buttons = [button for row in keyboard for button in row]
+    callbacks = [button["callback_data"] for button in buttons]
+
+    assert {"schedule", "credits", "exams", "groups"}.issubset(callbacks)
+    assert any(button["text"] == "✅ Зачёты" for button in buttons)
+    assert any(button["text"] == "📝 Экзамены" for button in buttons)
+
+    web_app.set_group(42, "4Ээб-4")
+    assert any(button["text"] == "👥 Группа: 4Ээб-4" for button in main_keyboard(42)["inline_keyboard"][2])
+
+    groups = [button["callback_data"] for row in group_keyboard("exams_group")["inline_keyboard"] for button in row]
+    assert "exams_group:4Ээб-4" in groups
+    assert "exams_group:4Ээб-4а" in groups
+
+
+def _make_callback(data, user_id=42):
+    return {
+        "id": "cb-1",
+        "data": data,
+        "from": {"id": user_id},
+        "message": {"message_id": 10, "chat": {"id": 42}},
+    }
+
+
+def test_subscription_check_accepts_administrator(monkeypatch):
+    statuses = {}
+
+    def fake_tg_request(method, params):
+        assert method == "getChatMember"
+        assert params == {"chat_id": "@startupspacevstu", "user_id": 42}
+        return {"ok": True, "result": {"status": statuses["value"]}}
+
+    monkeypatch.setattr(web_app, "tg_request", fake_tg_request)
+
+    for status in ("creator", "administrator", "member", "restricted"):
+        statuses["value"] = status
+        assert web_app.is_subscribed(42) is True
+
+    for status in ("left", "kicked", None):
+        statuses["value"] = status
+        assert web_app.is_subscribed(42) is False
+
+
+@pytest.mark.parametrize("status, allowed", [
+    ("administrator", True),
+    ("member", True),
+    ("left", False),
+])
+def test_callback_gating_respects_channel_status(monkeypatch, status, allowed):
+    monkeypatch.setattr(web_app, "is_subscribed", lambda user_id: status in ("administrator", "member"))
+    calls = []
+    monkeypatch.setattr(web_app, "tg_request", lambda method, params: calls.append((method, params)) or {})
+
+    web_app.USER_GROUPS.clear()
+    web_app.handle_callback_query(_make_callback("exams"))
+
+    edited = [params for method, params in calls if method == "editMessageText"]
+    assert len(edited) == 1
+    if allowed:
+        assert "Группа: *4Ээб-4*" in edited[0]["text"]
+        assert "Управление проектом" in edited[0]["text"]
+    else:
+        assert edited[0]["text"] == web_app.SUB_TEXT
+
+
+def test_callback_switches_group_and_shows_credits(monkeypatch):
+    monkeypatch.setattr(web_app, "is_subscribed", lambda user_id: True)
+    calls = []
+    monkeypatch.setattr(web_app, "tg_request", lambda method, params: calls.append((method, params)) or {})
+
+    web_app.USER_GROUPS.clear()
+    web_app.handle_callback_query(_make_callback("credits"))
+    web_app.handle_callback_query(_make_callback("change_credits"))
+    web_app.handle_callback_query(_make_callback("credits_group:4Ээб-4а"))
+
+    texts = [params["text"] for method, params in calls if method == "editMessageText"]
+    assert "Группа: *4Ээб-4*" in texts[0]
+    assert "выбери группу" in texts[1]
+    assert "Группа: *4Ээб-4а*" in texts[2]
+    assert web_app.get_group(42) == "4Ээб-4а"

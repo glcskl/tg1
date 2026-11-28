@@ -6,8 +6,9 @@ A Telegram bot that publishes the VSTU university timetable directly in chat, so
 
 - Automatic numerator and denominator detection, so the bot always shows the correct week
 - Timetable kept as structured JSON instead of static documents
-- Exams and credits listed separately from regular classes
-- Subscription check against a Telegram channel before the schedule opens
+- «Зачёты» and «Экзамены» buttons with per-group lists (default group: `4Ээб-4`)
+- Group switching from the main menu or from an assessment list
+- Subscription check against a Telegram channel before the schedule opens; channel admins are accepted
 - Two run modes: long polling for local work, webhook for hosting
 - Keep-alive mechanism that keeps the free hosting tier awake
 - Scheduled broadcasts driven by GitHub Actions
@@ -80,8 +81,9 @@ setup_webhook.py  registers the webhook URL with Telegram
 broadcast.py      scheduled broadcast sender
 keep_alive.py     keep-alive pinger for the free hosting tier
 health_check.py   pings /health and appends the result to health.log
-tests/            pytest suite for the web app and the health probe
-schedule.json     timetable, exams and credits
+tests/            pytest suite for both entry points and the health probe
+schedule.json     weekly timetable (числитель / знаменатель)
+assessments.json  exams and credits by group
 render.yaml       Render service blueprint
 Procfile          process definition for the hosting platform
 ```

@@ -189,6 +189,10 @@ CREDITS = [
 ]
 
 
+DEFAULT_GROUP = "4Ээб-4"
+USER_GROUPS = {}
+
+
 def get_current_week() -> str:
     week_number = datetime.now().isocalendar()[1]
     if week_number % 2 == 0:
@@ -206,16 +210,57 @@ def load_schedule() -> dict:
         return json.load(f)
 
 
+def assessments_path() -> str:
+    return os.path.join(BASE_DIR, "assessments.json")
+
+
+def load_assessments() -> dict:
+    with open(assessments_path(), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def all_groups() -> list:
+    data = load_assessments()
+    return sorted(set(data.get("exams", {})) | set(data.get("credits", {})))
+
+
+def get_group(user_id) -> str:
+    return USER_GROUPS.get(user_id, DEFAULT_GROUP)
+
+
+def set_group(user_id, group: str) -> None:
+    if user_id:
+        USER_GROUPS[user_id] = group
+
+
 # ============================================
 # КЛАВИАТУРЫ
 # ============================================
 
-def main_keyboard() -> dict:
+def main_keyboard(user_id=None) -> dict:
     return {
         "inline_keyboard": [
+            [{"text": "📅 Расписание", "callback_data": "schedule"}],
             [
-                {"text": "📅 Расписание", "callback_data": "schedule"},
-            ]
+                {"text": "✅ Зачёты", "callback_data": "credits"},
+                {"text": "📝 Экзамены", "callback_data": "exams"},
+            ],
+            [{"text": f"👥 Группа: {get_group(user_id)}", "callback_data": "groups"}],
+        ]
+    }
+
+
+def group_keyboard(prefix: str) -> dict:
+    rows = [[{"text": group, "callback_data": f"{prefix}:{group}"}] for group in all_groups()]
+    rows.append([{"text": "🔙 Назад", "callback_data": "back"}])
+    return {"inline_keyboard": rows}
+
+
+def assessment_keyboard(prefix: str) -> dict:
+    return {
+        "inline_keyboard": [
+            [{"text": "👥 Сменить группу", "callback_data": prefix}],
+            [{"text": "🔙 Назад", "callback_data": "back"}],
         ]
     }
 
@@ -311,6 +356,27 @@ def format_credits() -> str:
     return "\n".join(lines).strip()
 
 
+def format_group_assessments(kind: str, group: str) -> str:
+    title = "ЭКЗАМЕНЫ" if kind == "exams" else "ЗАЧЕТЫ"
+    icon = "📝" if kind == "exams" else "✅"
+    items = load_assessments().get(kind, {}).get(group, [])
+    lines = [f"{icon} *{title}*\n👥 Группа: *{group}*\n"]
+    if not items:
+        return "\n".join(lines).strip() + "\n\nНет данных по этой группе."
+    for item in items:
+        weekday = (item.get("weekday") or "").strip()
+        date_line = f"📅 *{item['date']}*"
+        if weekday:
+            date_line += f" ({weekday})"
+        lines.append(date_line)
+        lines.append(f"📚 {item['subject']}")
+        if item.get("teacher"):
+            lines.append(f"👤 {item['teacher']}")
+        lines.append(f"⏰ {item['time']}   🏫 {item['room']}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 # ============================================
 # TELEGRAM API
 # ============================================
@@ -372,9 +438,9 @@ def handle_message(message: dict) -> None:
             "sendMessage",
             {
                 "chat_id": chat_id,
-                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
+                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n👥 Группа: *{get_group(user_id)}*\n\nВыбери действие 👇",
                 "parse_mode": "Markdown",
-                "reply_markup": main_keyboard(),
+                "reply_markup": main_keyboard(user_id),
             },
         )
         _remember_message(chat_id, resp)
@@ -434,12 +500,43 @@ def handle_callback_query(callback_query: dict) -> None:
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n\nВыбери действие 👇",
+                "text": f"👋 Привет!\n📅 Текущая неделя: *{week}*\n👥 Группа: *{get_group(user_id)}*\n\nВыбери действие 👇",
                 "parse_mode": "Markdown",
-                "reply_markup": main_keyboard(),
+                "reply_markup": main_keyboard(user_id),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    # Выбор группы из главного меню
+    if data == "groups":
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"👥 Выбери группу (сейчас: *{get_group(user_id)}*)",
+                "parse_mode": "Markdown",
+                "reply_markup": group_keyboard("group"),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    if data.startswith("group:"):
+        set_group(user_id, data.split(":", 1)[1])
+        week = get_current_week()
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"👥 Группа: *{get_group(user_id)}*\n\nВыбери действие 👇",
+                "parse_mode": "Markdown",
+                "reply_markup": main_keyboard(user_id),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id, "text": "Группа обновлена"})
         return
 
     # Кнопка "Расписание"
@@ -460,34 +557,92 @@ def handle_callback_query(callback_query: dict) -> None:
 
     # Кнопка "Экзамены"
     if data == "exams":
-        text = format_exams()
         tg_request(
             "editMessageText",
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": text,
+                "text": format_group_assessments("exams", get_group(user_id)),
                 "parse_mode": "Markdown",
-                "reply_markup": back_keyboard(),
+                "reply_markup": assessment_keyboard("change_exams"),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
         return
 
-    # Кнопка "Зачеты"
-    if data == "credits":
-        text = format_credits()
+    if data == "change_exams":
         tg_request(
             "editMessageText",
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": text,
+                "text": f"📝 Экзамены — выбери группу (сейчас: *{get_group(user_id)}*)",
                 "parse_mode": "Markdown",
-                "reply_markup": back_keyboard(),
+                "reply_markup": group_keyboard("exams_group"),
             },
         )
         tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    if data.startswith("exams_group:"):
+        group = data.split(":", 1)[1]
+        set_group(user_id, group)
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": format_group_assessments("exams", group),
+                "parse_mode": "Markdown",
+                "reply_markup": assessment_keyboard("change_exams"),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id, "text": f"Группа: {group}"})
+        return
+
+    # Кнопка "Зачеты"
+    if data == "credits":
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": format_group_assessments("credits", get_group(user_id)),
+                "parse_mode": "Markdown",
+                "reply_markup": assessment_keyboard("change_credits"),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    if data == "change_credits":
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"✅ Зачёты — выбери группу (сейчас: *{get_group(user_id)}*)",
+                "parse_mode": "Markdown",
+                "reply_markup": group_keyboard("credits_group"),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+
+    if data.startswith("credits_group:"):
+        group = data.split(":", 1)[1]
+        set_group(user_id, group)
+        tg_request(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": format_group_assessments("credits", group),
+                "parse_mode": "Markdown",
+                "reply_markup": assessment_keyboard("change_credits"),
+            },
+        )
+        tg_request("answerCallbackQuery", {"callback_query_id": callback_id, "text": f"Группа: {group}"})
         return
 
     # Выбор дня
