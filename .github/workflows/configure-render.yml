@@ -1,0 +1,82 @@
+name: Configure Render
+
+on:
+  workflow_dispatch:
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set bot token and webhook
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SERVICE_ID: srv-dc598vl6e07s739u2ju0
+          SERVICE_URL: https://tg1-schedule-bot.onrender.com
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
+          api_key = os.environ["RENDER_API_KEY"]
+          token = os.environ["BOT_TOKEN"]
+          service_id = os.environ["SERVICE_ID"]
+          service_url = os.environ["SERVICE_URL"].rstrip("/")
+
+          def render(method, path, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(
+                  f"https://api.render.com/v1{path}",
+                  data=data,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  body = response.read().decode()
+                  return json.loads(body) if body else {}
+
+          def telegram(method, payload=None):
+              url = f"https://api.telegram.org/bot{token}/{method}"
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(
+                  url,
+                  data=data,
+                  method="POST" if payload is not None else "GET",
+                  headers={"Content-Type": "application/json"},
+              )
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+
+          def clean(text):
+              return text.replace(token, "***")
+
+          render("PUT", f"/services/{service_id}/env-vars", [{"key": "BOT_TOKEN", "value": token}])
+          print("BOT_TOKEN set on Render")
+
+          deploy = render("POST", f"/services/{service_id}/deploys")
+          deploy_id = deploy.get("deploy", {}).get("id")
+          print(f"Deploy started: {deploy_id}")
+
+          for _ in range(30):
+              time.sleep(10)
+              status = render("GET", f"/services/{service_id}/deploys/{deploy_id}")
+              phase = (status.get("deploy") or {}).get("status")
+              print(f"Deploy status: {phase}")
+              if phase in ("live", "succeeded"):
+                  break
+              if phase in ("build_failed", "deploy_failed", "canceled"):
+                  raise RuntimeError(f"Render deploy failed: {phase}")
+
+          webhook = telegram("setWebhook", {"url": f"{service_url}/webhook/{token}"})
+          print("setWebhook:", clean(json.dumps(webhook.get("description", webhook), ensure_ascii=False)))
+
+          info = telegram("getWebhookInfo").get("result", {})
+          print("getWebhookInfo:", clean(json.dumps(info, ensure_ascii=False)))
+          print(f"Service URL: {service_url}")
+          PY
