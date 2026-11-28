@@ -81,6 +81,7 @@ setup_webhook.py  registers the webhook URL with Telegram
 broadcast.py      scheduled broadcast sender
 keep_alive.py     keep-alive pinger for the free hosting tier
 health_check.py   pings /health and appends the result to health.log
+scripts/wake.sh   manual wake-up with retries for the Render free tier
 tests/            pytest suite for both entry points and the health probe
 schedule.json     weekly timetable (числитель / знаменатель)
 assessments.json  exams and credits by group
@@ -94,9 +95,16 @@ Procfile          process definition for the hosting platform
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `keep-alive.yml` | every 5 minutes | pings the service so the free tier does not sleep |
-| `redeploy.yml` | manual | forces a redeploy when the service has been stopped |
+| `keep-alive.yml` | every 5 minutes | pings `/health` with retries so the free tier does not sleep |
+| `redeploy.yml` | manual | triggers a Render deploy immediately, without waiting in the Actions UI |
+| `configure-render.yml` | manual | sets `BOT_TOKEN`, deploys and registers the Telegram webhook |
 | `broadcast.yml` | manual | sends a scheduled broadcast |
+
+For manual wake-up (for example right before testing in Telegram):
+
+```bash
+./scripts/wake.sh
+```
 
 ## Tests and health log
 

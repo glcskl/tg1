@@ -7,6 +7,7 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn web_app:app
+    healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
         sync: false
