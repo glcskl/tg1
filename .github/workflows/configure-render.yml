@@ -59,14 +59,13 @@ jobs:
           render("PUT", f"/services/{service_id}/env-vars", [{"key": "BOT_TOKEN", "value": token}])
           print("BOT_TOKEN set on Render")
 
-          deploy = render("POST", f"/services/{service_id}/deploys")
-          deploy_id = deploy.get("deploy", {}).get("id")
-          print(f"Deploy started: {deploy_id}")
+          render("POST", f"/services/{service_id}/deploys", {"clearCache": "do_not_clear"})
+          print("Deploy started")
 
           for _ in range(30):
               time.sleep(10)
-              status = render("GET", f"/services/{service_id}/deploys/{deploy_id}")
-              phase = (status.get("deploy") or {}).get("status")
+              deploys = render("GET", f"/services/{service_id}/deploys?limit=1")
+              phase = (deploys[0].get("deploy") or {}).get("status")
               print(f"Deploy status: {phase}")
               if phase in ("live", "succeeded"):
                   break
